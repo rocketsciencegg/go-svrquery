@@ -51,3 +51,6 @@ const (
 	TeamInfo
 	Metrics
 )
+
+// PerformanceInfo uses the metrics request bit with the SQP v2 wire format.
+const PerformanceInfo = Metrics

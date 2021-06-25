@@ -2,6 +2,7 @@ package sqp
 
 import (
 	"encoding/json"
+	"strconv"
 )
 
 // ServerInfoChunk is the response chunk for server info data
@@ -61,15 +62,39 @@ func (mc *MetricsChunk) MarshalJSON() ([]byte, error) {
 	return json.Marshal(mc.Metrics)
 }
 
+// PerformanceInfoChunk contains SQP v2 performance flags and gauges.
+type PerformanceInfoChunk struct {
+	ChunkLength uint32    `json:"-"`
+	NumFlags    byte      `json:"-"`
+	Flags       uint32    `json:"-"`
+	Gauges      []float32 `json:"-"`
+}
+
+// MarshalJSON returns indexed performance flags and gauges.
+func (pi PerformanceInfoChunk) MarshalJSON() ([]byte, error) {
+	if pi.NumFlags > 32 {
+		return nil, ErrMalformedPacket("performance flag count exceeds 32")
+	}
+	obj := make(map[string]interface{}, int(pi.NumFlags)+len(pi.Gauges))
+	for i := 0; i < int(pi.NumFlags); i++ {
+		obj["flag_"+strconv.Itoa(i)] = (pi.Flags>>i)&1 == 1
+	}
+	for i, value := range pi.Gauges {
+		obj["gauge_"+strconv.Itoa(i)] = value
+	}
+	return json.Marshal(obj)
+}
+
 // QueryResponse is the combined response to a query request
 type QueryResponse struct {
-	Version     uint16            `json:"version"`
-	Address     string            `json:"address"`
-	ServerInfo  *ServerInfoChunk  `json:"server_info,omitempty"`
-	ServerRules *ServerRulesChunk `json:"server_rules,omitempty"`
-	PlayerInfo  *PlayerInfoChunk  `json:"player_info,omitempty"`
-	TeamInfo    *TeamInfoChunk    `json:"team_info,omitempty"`
-	Metrics     *MetricsChunk     `json:"metrics,omitempty"`
+	Version         uint16                `json:"version"`
+	Address         string                `json:"address"`
+	ServerInfo      *ServerInfoChunk      `json:"server_info,omitempty"`
+	ServerRules     *ServerRulesChunk     `json:"server_rules,omitempty"`
+	PlayerInfo      *PlayerInfoChunk      `json:"player_info,omitempty"`
+	TeamInfo        *TeamInfoChunk        `json:"team_info,omitempty"`
+	Metrics         *MetricsChunk         `json:"metrics,omitempty"`
+	PerformanceInfo *PerformanceInfoChunk `json:"performance_info,omitempty"`
 }
 
 // MaxClients returns the maximum number of clients.
