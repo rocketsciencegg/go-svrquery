@@ -22,17 +22,7 @@ func GetResponder(proto string, state common.QueryState) (common.QueryResponder,
 	case "tf2":
 		return tf2.NewQueryResponder(state, 1, false)
 	case "tf2e":
-		return tf2.NewQueryResponder(state, 1, true)
-	case "tf2e-v2":
-		return tf2.NewQueryResponder(state, 2, true)
-	case "tf2e-v3":
 		return tf2.NewQueryResponder(state, 3, true)
-	case "tf2e-v4":
-		return tf2.NewQueryResponder(state, 4, true)
-	case "tf2e-v5":
-		return tf2.NewQueryResponder(state, 5, true)
-	case "tf2e-v6":
-		return tf2.NewQueryResponder(state, 6, true)
 	case "tf2e-v7":
 		return tf2.NewQueryResponder(state, 7, true)
 	case "tf2e-v8":

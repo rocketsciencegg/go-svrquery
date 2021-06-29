@@ -95,7 +95,7 @@ func NewQueryResponder(state common.QueryState, version int8, extended bool) (co
 func (q *QueryResponder) Respond(_ string, _ []byte) ([]byte, error) {
 	resp := bytes.NewBuffer(nil)
 	responseFlag := byte(80)
-	dc := "multiplay-dc"
+	dc := "dc"
 
 	if q.extended {
 		responseFlag = byte(78)
