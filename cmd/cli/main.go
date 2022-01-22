@@ -26,7 +26,7 @@ func main() {
 
 	if *file != "" {
 		// Use bulk file mode
-		if err := queryBulk(*file); err != nil {
+		if err := queryBulk(*file, os.Stdout); err != nil {
 			l.Fatal(err)
 		}
 		return
