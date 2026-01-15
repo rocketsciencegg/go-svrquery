@@ -3,23 +3,20 @@ on:
     types: [ created ]
 
 jobs:
-  releases-matrix:
+  goreleaser:
     name: Release Go Binary
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        goos: [ linux, windows, darwin ]
-        goarch: [ "386", amd64 ]
-        exclude:
-          - goarch: "386"
-            goos: darwin
     steps:
-      - uses: actions/checkout@v2
-      - uses: wangyoucao577/go-release-action@v1.17
+      - uses: actions/checkout@v6
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          goos: ${{ matrix.goos }}
-          goarch: ${{ matrix.goarch }}
-          goversion: 1.20.3
-          project_path: "./cmd/cli"
-          binary_name: "go-svrquery"
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
