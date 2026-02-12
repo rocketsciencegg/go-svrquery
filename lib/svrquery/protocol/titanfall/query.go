@@ -349,6 +349,7 @@ func (q *queryer) clients(r *common.BinaryReader, i *Info) (err error) {
 				return err
 			}
 		}
+		i.Clients = append(i.Clients, c)
 
 		if err = r.Read(&id); err != nil {
 			return err
