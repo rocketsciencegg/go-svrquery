@@ -82,6 +82,11 @@ Documentation
 -------------
 - [GoDoc API Reference](http://godoc.org/github.com/multiplay/go-svrquery).
 
+Continuous integration
+----------------------
+Tests run on Linux, macOS, and Windows with Go 1.27. The Go 1.27 toolchain
+selection uses `check-latest` to resolve the newest patch release.
+
 License
 -------
 go-svrquery is available under the [BSD 2-Clause License](https://opensource.org/licenses/BSD-2-Clause).
