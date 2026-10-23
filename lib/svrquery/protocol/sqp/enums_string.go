@@ -21,8 +21,9 @@ const _DataType_name = "ByteUint16Uint32Uint64StringFloat32"
 var _DataType_index = [...]uint8{0, 4, 10, 16, 22, 28, 35}
 
 func (i DataType) String() string {
-	if i >= DataType(len(_DataType_index)-1) {
+	idx := int(i) - 0
+	if i < 0 || idx >= len(_DataType_index)-1 {
 		return "DataType(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _DataType_name[_DataType_index[i]:_DataType_index[i+1]]
+	return _DataType_name[_DataType_index[idx]:_DataType_index[idx+1]]
 }
