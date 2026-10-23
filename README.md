@@ -84,11 +84,8 @@ Documentation
 
 Continuous integration
 ----------------------
-Tests, vet, and builds run on Linux, macOS, and Windows with the module minimum
-from `go.mod` (currently Go 1.20), Go 1.25, and the latest stable Go release.
-CI and release builds use
-`check-latest` to resolve fresh toolchains; `stable` was verified as Go 1.27.3
-against the official Go download metadata on 2026-10-23.
+Tests run on Linux, macOS, and Windows with Go 1.27. The Go 1.27 toolchain
+selection uses `check-latest` to resolve the newest patch release.
 
 License
 -------
