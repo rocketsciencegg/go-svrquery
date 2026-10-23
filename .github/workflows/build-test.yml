@@ -26,6 +26,4 @@ jobs:
         check-latest: true
 
     - name: Test
-      run: go test -p 2 ./...
-      env:
-        GOMAXPROCS: "2"
+      run: go test ./...
