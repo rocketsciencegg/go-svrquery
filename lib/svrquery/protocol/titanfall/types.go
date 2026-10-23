@@ -25,9 +25,11 @@ type Info struct {
 	// Version 9+
 	PerformanceInfoV9
 	// Version 2+
-	MatchState
+	MatchStateV6
 	// Version 9+
 	MatchStateV9
+	// Version 10+
+	MatchStateV10
 
 	Teams   []Team
 	Clients []Client
@@ -75,6 +77,7 @@ type InstanceInfo struct {
 }
 
 // InstanceInfoV8 represents instance information contained in a query response.
+// We use a separate structure as the order is important for parsing.
 type InstanceInfoV8 struct {
 	Retail         byte
 	InstanceType   byte
@@ -82,6 +85,17 @@ type InstanceInfoV8 struct {
 	NetProtocol    uint16
 	HealthFlags    HealthFlags
 	RandomServerID uint32
+}
+
+// toV1 converts the V8 instance info to the V1 format.
+func (i InstanceInfoV8) toV1() InstanceInfo {
+	return InstanceInfo{
+		Retail:         i.Retail,
+		InstanceType:   i.InstanceType,
+		ClientCRC:      i.ClientCRC,
+		NetProtocol:    i.NetProtocol,
+		RandomServerID: uint64(i.RandomServerID),
+	}
 }
 
 // HealthFlags allows us to read the health bits and output them
@@ -99,6 +113,7 @@ func (a HealthFlags) MarshalJSON() ([]byte, error) {
 		SlowServerFrames bool
 		Hitching         bool
 		DOS              bool
+		Relay            bool
 	}{}
 	obj.None = a.None()
 	obj.PacketLossIn = a.PacketLossIn()
@@ -108,6 +123,7 @@ func (a HealthFlags) MarshalJSON() ([]byte, error) {
 	obj.SlowServerFrames = a.SlowServerFrames()
 	obj.Hitching = a.Hitching()
 	obj.DOS = a.DOS()
+	obj.Relay = a.Relay()
 
 	return json.Marshal(obj)
 }
@@ -152,6 +168,11 @@ func (a HealthFlags) DOS() bool {
 	return (a>>6)&1 == 1
 }
 
+// Relay health flag
+func (a HealthFlags) Relay() bool {
+	return (a>>7)&1 == 1
+}
+
 // BasicInfo represents basic information contained in a query response.
 type BasicInfo struct {
 	Port                      uint16
@@ -182,12 +203,34 @@ type PerformanceInfo struct {
 	MaxUserCommandTime     float32
 }
 
+// MatchStateV10 represents match state contained in a query response.
+// Two new fields on entity count were added in this version of the schema.
+type MatchStateV10 struct {
+	MatchStateV9
+	CurrentEntityPropertyCount uint32
+	MaxEntityPropertyCount     uint32
+}
+
 // MatchStateV9 represents match state contained in a query response.
 // A number of fields were removed in this version of the schema.
 type MatchStateV9 struct {
 	Phase                   byte
 	TimePassed              uint16 // seconds
 	TeamsLeftWithPlayersNum uint16
+}
+
+// toV6 converts the V9 match state to the V6 format. Preserving fields where possible.
+func (m MatchStateV9) toV6() MatchStateV6 {
+	// The older version of the match state is dramatically different to the new version so not
+	// all information is available through the backwards compatibility interface.
+	return MatchStateV6{
+		// The v2 stricture
+		MatchStateV2: MatchStateV2{
+			Phase:      m.Phase,
+			TimePassed: m.TimePassed,
+		},
+		TeamsLeftWithPlayersNum: m.TeamsLeftWithPlayersNum,
+	}
 }
 
 // MatchStateV2 represents match state contained in a query response.
@@ -202,8 +245,8 @@ type MatchStateV2 struct {
 	MaxScore         uint16
 }
 
-// MatchState represents match state contained in a query response.
-type MatchState struct {
+// MatchStateV6 represents match state contained in a query response.
+type MatchStateV6 struct {
 	MatchStateV2
 	TeamsLeftWithPlayersNum uint16
 }

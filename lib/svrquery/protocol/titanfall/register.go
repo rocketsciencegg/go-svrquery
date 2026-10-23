@@ -10,4 +10,5 @@ func init() {
 	protocol.MustRegister("tf2e-v7", newQueryer(7))
 	protocol.MustRegister("tf2e-v8", newQueryer(8))
 	protocol.MustRegister("tf2e-v9", newQueryer(9))
+	protocol.MustRegister("tf2e-v10", newQueryer(10))
 }

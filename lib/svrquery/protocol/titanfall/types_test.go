@@ -18,6 +18,7 @@ func TestHealthFlags(t *testing.T) {
 		expSlowServerFrames bool
 		expHitching         bool
 		expDOS              bool
+		expRelay            bool
 	}{
 		{
 			input:   0,
@@ -51,10 +52,14 @@ func TestHealthFlags(t *testing.T) {
 			input:  1 << 6,
 			expDOS: true,
 		},
+		{
+			input:    1 << 7,
+			expRelay: true,
+		},
 	}
 
 	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("verify 0b%b", tc.input), func(t *testing.T) {
+		t.Run(fmt.Sprintf("verify 0b%.32b", tc.input), func(t *testing.T) {
 			hf := HealthFlags(tc.input)
 			require.Equal(t, tc.expNone, hf.None())
 			require.Equal(t, tc.expPacketLossIn, hf.PacketLossIn())
@@ -63,6 +68,8 @@ func TestHealthFlags(t *testing.T) {
 			require.Equal(t, tc.expPacketChokedOut, hf.PacketChokedOut())
 			require.Equal(t, tc.expSlowServerFrames, hf.SlowServerFrames())
 			require.Equal(t, tc.expHitching, hf.Hitching())
+			require.Equal(t, tc.expDOS, hf.DOS())
+			require.Equal(t, tc.expRelay, hf.Relay())
 		})
 	}
 }

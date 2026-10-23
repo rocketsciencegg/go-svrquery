@@ -10,35 +10,19 @@ import (
 )
 
 func TestNewClient(t *testing.T) {
-	cases := []struct {
-		name     string
-		protocol string
-		addr     string
-		err      bool
-	}{
-		{
-			name:     "tf2e",
-			protocol: "tf2e",
-		},
-		{
-			name:     "invalid-protocol",
-			protocol: "my-protocol",
-			err:      true,
-		},
-	}
+	addr := "localhost:8000"
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			c, err := NewClient(tc.protocol, tc.addr, WithKey("test"), WithTimeout(time.Second))
-			if tc.err {
-				require.Error(t, err)
-				require.Nil(t, c)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, c)
-			}
-		})
-	}
+	t.Run("tf2e", func(t *testing.T) {
+		c, err := NewClient("tf2e", addr, WithKey("test"), WithTimeout(time.Second))
+		require.NoError(t, err)
+		require.NotNil(t, c)
+	})
+
+	t.Run("invalid-protocol", func(t *testing.T) {
+		c, err := NewClient("my-protocol", addr, WithKey("test"), WithTimeout(time.Second))
+		require.Error(t, err)
+		require.Nil(t, c)
+	})
 }
 
 func TestQuery(t *testing.T) {

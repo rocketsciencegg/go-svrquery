@@ -41,7 +41,7 @@ var (
 			Map:             "mp_rr_desertlands_64k_x_64k",
 		},
 		PerformanceInfo: PerformanceInfo{},
-		MatchState: MatchState{
+		MatchStateV6: MatchStateV6{
 			MatchStateV2: MatchStateV2{
 				Phase:            2,
 				MaxRounds:        1,
@@ -51,6 +51,7 @@ var (
 				TimePassed:       0,
 				MaxScore:         50,
 			},
+			TeamsLeftWithPlayersNum: 0,
 		},
 	}
 )
@@ -75,7 +76,7 @@ func TestQuery(t *testing.T) {
 		AverageUserCommandTime: 3,
 		MaxUserCommandTime:     4,
 	}
-	v7.MatchState.TeamsLeftWithPlayersNum = 6
+	v7.MatchStateV6.TeamsLeftWithPlayersNum = 6
 
 	v8 := v7
 	v8.Version = 8
@@ -87,7 +88,6 @@ func TestQuery(t *testing.T) {
 		HealthFlags:    0,
 		RandomServerID: 0,
 	}
-	v8.InstanceInfo = InstanceInfo{}
 
 	v9 := v8
 	v9.Version = 9
@@ -98,13 +98,32 @@ func TestQuery(t *testing.T) {
 		CommitMemory:    8472,
 		ResidentMemory:  3901,
 	}
-	v9.PerformanceInfo = PerformanceInfo{}
+	// Newer version of the match state are dramatically different to the older ones. So wipe with a new copy that
+	// looks like what will be retained by the compatability code.
 	v9.MatchStateV9 = MatchStateV9{
 		Phase:                   3,
 		TimePassed:              0,
 		TeamsLeftWithPlayersNum: 0,
 	}
-	v9.MatchState = MatchState{}
+	v9.MatchStateV6 = MatchStateV6{
+		MatchStateV2: MatchStateV2{
+			Phase:      3,
+			TimePassed: 0,
+		},
+		TeamsLeftWithPlayersNum: 0,
+	}
+
+	v10 := v9
+	v10.Version = 10
+	v10.MatchStateV10 = MatchStateV10{
+		MatchStateV9: MatchStateV9{
+			Phase:                   3,
+			TimePassed:              0,
+			TeamsLeftWithPlayersNum: 0,
+		},
+		CurrentEntityPropertyCount: 2,
+		MaxEntityPropertyCount:     5,
+	}
 
 	cases := []struct {
 		name        string
@@ -144,6 +163,15 @@ func TestQuery(t *testing.T) {
 			request:     "request-v9",
 			response:    "response-v9",
 			expected:    v9,
+			key:         testKey,
+			expEncypted: true,
+		},
+		{
+			name:        "v10",
+			version:     10,
+			request:     "request-v10",
+			response:    "response-v10",
+			expected:    v10,
 			key:         testKey,
 			expEncypted: true,
 		},
