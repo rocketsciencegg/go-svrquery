@@ -1,6 +1,6 @@
 package sqp
 
-//go:generate stringer -type=DataType -output=enums_string.go
+//go:generate go run golang.org/x/tools/cmd/stringer@v0.52.0 -type=DataType -output=enums_string.go
 
 // DataType indicates the type of a response field
 type DataType byte
