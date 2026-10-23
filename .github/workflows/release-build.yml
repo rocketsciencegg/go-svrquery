@@ -12,6 +12,9 @@ jobs:
           fetch-depth: 0
 
       - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          check-latest: true
 
       - uses: goreleaser/goreleaser-action@v6
         with:

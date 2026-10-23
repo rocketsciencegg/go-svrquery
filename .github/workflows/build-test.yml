@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        go: ["1.25"]
+        go: ["minimum", "1.25", "stable"]
 
     steps:
     - name: Checkout code
@@ -22,7 +22,21 @@ jobs:
     - name: Install Go
       uses: actions/setup-go@v6
       with:
-        go-version: ${{ matrix.go }}
+        go-version: ${{ matrix.go != 'minimum' && matrix.go || '' }}
+        go-version-file: ${{ matrix.go == 'minimum' && 'go.mod' || '' }}
+        check-latest: true
 
     - name: Test
-      run: go test ./...
+      run: go test -p 2 ./...
+      env:
+        GOMAXPROCS: "2"
+
+    - name: Vet
+      run: go vet -p 2 ./...
+      env:
+        GOMAXPROCS: "2"
+
+    - name: Build
+      run: go build -p 2 ./...
+      env:
+        GOMAXPROCS: "2"
