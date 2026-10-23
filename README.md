@@ -9,16 +9,9 @@ Features
 
 Installation
 ------------
-Go 1.25 or later is required.
-
 ```sh
 go get -u github.com/multiplay/go-svrquery
 ```
-
-Development
------------
-Regenerate protocol enum strings with `go generate ./lib/svrquery/protocol/sqp`.
-The pinned stringer tool requires Go 1.26 or later (or automatic toolchain selection).
 
 Examples
 --------
