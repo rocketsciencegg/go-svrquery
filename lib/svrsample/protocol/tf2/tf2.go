@@ -40,38 +40,38 @@ type (
 	}
 
 	matchState struct {
-		Phase             byte
-		MaxRounds         byte
-		MaxRoundsIMC      byte
-		MaxRoundsMilitia  byte
-		TimeLimitSeconds  uint16
-		TimePassedSeconds uint16
-		MaxScore          uint16
-		Team              byte
+		Phase                   byte
+		MaxRounds               byte
+		MaxRoundsIMC            byte
+		MaxRoundsMilitia        byte
+		TimeLimitSeconds        uint16
+		TimePassedSeconds       uint16
+		MaxScore                uint16
+		TeamsLeftWithPlayersNum *uint16
+		Team                    byte
 	}
 
 	queryWireFormat struct {
-		Header                  int32
-		ResponseType            byte
-		Version                 int8
-		InstanceInfo            *instanceInfo
-		InstanceInfoV8          *instanceInfoV8
-		BuildName               *string
-		Datacenter              *string
-		GameMode                *string
-		Port                    uint16
-		Platform                string
-		PlaylistVersion         string
-		PlaylistNum             uint32
-		PlaylistName            string
-		PlatformNum             *byte
-		NumClients              uint8
-		MaxClients              uint8
-		Map                     string
-		PerformanceInfo         *performanceInfo
-		TeamsLeftWithPlayersNum *uint16
-		MatchState              *matchState
-		EOP                     uint64
+		Header          int32
+		ResponseType    byte
+		Version         int8
+		InstanceInfo    *instanceInfo
+		InstanceInfoV8  *instanceInfoV8
+		BuildName       *string
+		Datacenter      *string
+		GameMode        *string
+		Port            uint16
+		Platform        string
+		PlaylistVersion string
+		PlaylistNum     uint32
+		PlaylistName    string
+		PlatformNum     *byte
+		NumClients      uint8
+		MaxClients      uint8
+		Map             string
+		PerformanceInfo *performanceInfo
+		MatchState      *matchState
+		EOP             uint64
 	}
 )
 
@@ -138,7 +138,7 @@ func (q *QueryResponder) Respond(_ string, _ []byte) ([]byte, error) {
 
 	if q.version > 5 {
 		i := uint16(0)
-		f.TeamsLeftWithPlayersNum = &i
+		f.MatchState.TeamsLeftWithPlayersNum = &i
 	}
 
 	if q.version > 6 {
