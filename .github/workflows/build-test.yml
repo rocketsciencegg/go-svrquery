@@ -53,9 +53,6 @@ jobs:
             exit 1
           fi
 
-      - name: Vet
-        run: go vet ./...
-
   golangci-lint:
     runs-on: ubuntu-latest
     steps:
