@@ -353,9 +353,9 @@ func TestQueryWithClients(t *testing.T) {
 		require.NoError(t, binary.Write(&response, binary.LittleEndian, v))
 	}
 	write(expected.Header)
-	write(expected.BasicInfo.Port)
+	write(expected.Port)
 	response.WriteString("PC\x00\x00")
-	write(expected.BasicInfo.PlaylistNum)
+	write(expected.PlaylistNum)
 	response.WriteString("test\x00")
 	write(expected.BasicInfo.NumClients)
 	write(expected.BasicInfo.MaxClients)
