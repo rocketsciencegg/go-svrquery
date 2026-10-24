@@ -86,8 +86,8 @@ func (q *queryer) decrypt(b []byte) ([]byte, error) {
 		return nil, fmt.Errorf("new gcm: %w", err)
 	}
 
-	if len(b) < gcm.NonceSize() {
-		return nil, fmt.Errorf("incoming bytes smaller than %d", gcm.NonceSize())
+	if len(b) < gcm.NonceSize()+gcm.Overhead() {
+		return nil, fmt.Errorf("incoming bytes smaller than %d", gcm.NonceSize()+gcm.Overhead())
 	}
 
 	nonce, tag, b := b[:gcm.NonceSize()], b[gcm.NonceSize():gcm.NonceSize()+tagSize], b[gcm.NonceSize()+tagSize:]

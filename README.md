@@ -99,6 +99,30 @@ format, which the query client does not currently support.
 Starting sample server using protocol sqp on :12121
 ```
 
+### Bulk queries
+
+Use `./go-svrquery -file servers.txt` to query a file containing one
+`protocol address` entry per line. For example:
+
+```text
+sqp 127.0.0.1:12121
+tf2e-v8,key=BASE64_KEY 127.0.0.1:37015
+```
+
+Results are streamed to standard output as a single JSON array in completion
+order, not input order. The worker pool and queues are bounded; the number of
+entries is not capped. Each input line produces a result, including blank or
+malformed lines, which produce an `error` and may have no `address`. Query and
+entry errors do not stop other entries. Input read errors return a nonzero exit
+status after already queued entries have been processed; output errors stop
+further processing and return a nonzero exit status. Input lines must fit within
+Go's default scanner limit (approximately 64 KiB).
+
+Library callers can reuse `svrquery.NewBulkClient` for sequential queries.
+Constructor options are defaults; options passed to `Query` apply only to that
+request. Each query releases its UDP socket before returning. A bulk client must
+not be shared by concurrent goroutines.
+
 Documentation
 -------------
 - [GoDoc API Reference](http://godoc.org/github.com/multiplay/go-svrquery).

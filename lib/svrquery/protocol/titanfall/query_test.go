@@ -2,6 +2,9 @@ package titanfall
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"testing"
@@ -13,8 +16,9 @@ import (
 )
 
 const (
-	testDir = "testdata"
-	testKey = "AABBCCddeeffgghhkkllmmNN"
+	testDir           = "testdata"
+	testKey           = "AABBCCddeeffgghhkkllmmNN"
+	testEncryptionKey = "Z2ZkZ3Nnbmpza2U0cnRyZQ=="
 )
 
 var (
@@ -158,7 +162,7 @@ func TestQuery(t *testing.T) {
 			request:     "request-v8",
 			response:    "response-v8",
 			expected:    v8,
-			key:         testKey,
+			key:         testEncryptionKey,
 			expEncypted: true,
 		},
 		{
@@ -167,7 +171,7 @@ func TestQuery(t *testing.T) {
 			request:     "request-v9",
 			response:    "response-v9",
 			expected:    v9,
-			key:         testKey,
+			key:         testEncryptionKey,
 			expEncypted: true,
 		},
 		{
@@ -176,7 +180,7 @@ func TestQuery(t *testing.T) {
 			request:     "request-v10",
 			response:    "response-v10",
 			expected:    v10,
-			key:         testKey,
+			key:         testEncryptionKey,
 			expEncypted: true,
 		},
 		{
@@ -199,9 +203,8 @@ func TestQuery(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			var err error
 			mc := &clienttest.MockClient{}
-			mc.On("Key").Return("Z2ZkZ3Nnbmpza2U0cnRyZQ==")
+			mc.On("Key").Return(tc.key)
 			p := queryer{
 				c:       mc,
 				version: tc.version,
@@ -211,13 +214,31 @@ func TestQuery(t *testing.T) {
 			resp := clienttest.LoadData(t, testDir, tc.response)
 
 			if tc.expEncypted {
-				req, err = p.encrypt(req)
+				req[5] = tc.version
+				copy(req[6:], tc.key)
+				key, err := base64.StdEncoding.DecodeString(tc.key)
 				require.NoError(t, err)
-				resp, err = p.encrypt(resp)
+				block, err := aes.NewCipher(key)
 				require.NoError(t, err)
+				gcm, err := cipher.NewGCM(block)
+				require.NoError(t, err)
+				nonce := bytes.Repeat([]byte{0x42}, gcm.NonceSize())
+				sealed := gcm.Seal(nil, nonce, resp, gcmAdditionalData)
+				resp = append(nonce, sealed[len(sealed)-gcm.Overhead():]...)
+				resp = append(resp, sealed[:len(sealed)-gcm.Overhead()]...)
+				mc.On("Write", mock.MatchedBy(func(packet []byte) bool {
+					if len(packet) != len(req)+gcm.NonceSize()+gcm.Overhead() {
+						return false
+					}
+					ciphertext := append([]byte(nil), packet[gcm.NonceSize()+gcm.Overhead():]...)
+					ciphertext = append(ciphertext, packet[gcm.NonceSize():gcm.NonceSize()+gcm.Overhead()]...)
+					plain, err := gcm.Open(nil, packet[:gcm.NonceSize()], ciphertext, gcmAdditionalData)
+					return err == nil && bytes.Equal(plain, req)
+				})).Return(len(req)+gcm.NonceSize()+gcm.Overhead(), nil).Once()
+			} else {
+				mc.On("Write", req).Return(len(req), nil).Once()
 			}
 
-			mc.On("Write", mock.AnythingOfType("[]uint8")).Return(len(req), nil)
 			mc.On("Read", mock.AnythingOfType("[]uint8")).Return(resp, nil)
 
 			i, err := p.Query()
@@ -225,6 +246,24 @@ func TestQuery(t *testing.T) {
 			require.IsType(t, &Info{}, i)
 			require.Equal(t, &tc.expected, i)
 			mc.AssertExpectations(t)
+		})
+	}
+}
+
+func TestDecryptTruncatedPackets(t *testing.T) {
+	for size := 0; size < 28; size++ {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			mc := &clienttest.MockClient{}
+			mc.On("Key").Return(testEncryptionKey)
+			p := queryer{c: mc, version: 8}
+			_, err := p.decrypt(make([]byte, size))
+			require.Error(t, err)
+			if size >= minLength {
+				mc.On("Write", mock.AnythingOfType("[]uint8")).Return(packetSize+28, nil)
+				mc.On("Read", mock.AnythingOfType("[]uint8")).Return(make([]byte, size), nil)
+				_, err = p.Query()
+				require.Error(t, err)
+			}
 		})
 	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,11 +42,19 @@ func (i *BulkResponseItem) encode(w io.Writer, b *bytes.Buffer, e *json.Encoder)
 		return fmt.Errorf("encode item %v: %w", i, err)
 	}
 
-	if _, err := w.Write(bytes.TrimRight(b.Bytes(), "\n")); err != nil {
+	if err := writeOutput(w, bytes.TrimRight(b.Bytes(), "\n")); err != nil {
 		return fmt.Errorf("write item: %w", err)
 	}
 
 	return nil
+}
+
+func writeOutput(w io.Writer, p []byte) error {
+	n, err := w.Write(p)
+	if err == nil && n != len(p) {
+		return io.ErrShortWrite
+	}
+	return err
 }
 
 // BulkResponseServerInfoItem containing basic server information.
@@ -57,33 +66,41 @@ type BulkResponseServerInfoItem struct {
 
 // queryBulk queries a bulk set of servers from a query file writing the JSON results to output.
 func queryBulk(file string, output io.Writer) (err error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	work := make(chan string, numWorkers)              // Buffered to ensure we can busy all workers.
 	results := make(chan BulkResponseItem, numWorkers) // Buffered to improve worker concurrency.
 
 	// Create a pool of workers to process work.
 	var wgWorkers sync.WaitGroup
-	wgWorkers.Add(numWorkers)
 	for w := 1; w <= numWorkers; w++ {
 		c, err := svrquery.NewBulkClient()
 		if err != nil {
 			close(work) // Ensure that existing workers return.
+			wgWorkers.Wait()
 			return fmt.Errorf("bulk client: %w", err)
 		}
 
+		wgWorkers.Add(1)
 		go func() {
 			defer wgWorkers.Done()
-			worker(work, results, c)
+			worker(ctx, work, results, c)
 		}()
 	}
 
 	// Create a writer to write the results to output as they become available.
 	errc := make(chan error)
 	go func() {
-		errc <- writer(output, results)
+		werr := writer(output, results)
+		if werr != nil {
+			cancel()
+		}
+		errc <- werr
 	}()
 
 	// Queue work onto the channel.
-	if err = producer(file, work); err != nil {
+	if err = producer(ctx, file, work); err != nil {
 		err = fmt.Errorf("producer: %w", err)
 	}
 
@@ -93,10 +110,10 @@ func queryBulk(file string, output io.Writer) (err error) {
 	close(results)
 
 	if werr := <-errc; werr != nil {
-		if err != nil {
-			return fmt.Errorf("%w, writer: %s", err, werr)
+		if errors.Is(err, context.Canceled) {
+			err = nil
 		}
-		return fmt.Errorf("writer: %w", werr)
+		return errors.Join(err, fmt.Errorf("writer: %w", werr))
 	}
 
 	return err
@@ -104,7 +121,7 @@ func queryBulk(file string, output io.Writer) (err error) {
 
 // writer writes results as JSON encoded array to w.
 func writer(w io.Writer, results <-chan BulkResponseItem) (err error) {
-	if _, err = w.Write([]byte{'['}); err != nil {
+	if err = writeOutput(w, []byte{'['}); err != nil {
 		return fmt.Errorf("write header: %w", err)
 	}
 
@@ -112,11 +129,8 @@ func writer(w io.Writer, results <-chan BulkResponseItem) (err error) {
 	// the closing ]. If a previous encode fails, this could still
 	// be insufficient.
 	defer func() {
-		if _, werr := w.Write([]byte("]\n")); werr != nil {
-			werr = fmt.Errorf("write trailer: %w", err)
-			if err == nil {
-				err = werr
-			}
+		if werr := writeOutput(w, []byte("]\n")); werr != nil {
+			err = errors.Join(err, fmt.Errorf("write trailer: %w", werr))
 		}
 	}()
 
@@ -135,7 +149,7 @@ func writer(w io.Writer, results <-chan BulkResponseItem) (err error) {
 	}
 
 	for i := range results {
-		if _, err := w.Write([]byte(",")); err != nil {
+		if err := writeOutput(w, []byte(",")); err != nil {
 			return fmt.Errorf("write set: %w", err)
 		}
 
@@ -149,7 +163,7 @@ func writer(w io.Writer, results <-chan BulkResponseItem) (err error) {
 
 // producer reads lines from file sending them to work.
 // work will be closed before return.
-func producer(file string, work chan<- string) error {
+func producer(ctx context.Context, file string, work chan<- string) error {
 	defer close(work)
 
 	f, err := os.Open(file)
@@ -160,16 +174,33 @@ func producer(file string, work chan<- string) error {
 
 	s := bufio.NewScanner(f)
 	for s.Scan() {
-		work <- s.Text()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case work <- s.Text():
+		}
 	}
 
 	return s.Err()
 }
 
 // worker calls processBulkEntry for each item read from work, writing the result to results.
-func worker(work <-chan string, results chan<- BulkResponseItem, client *svrquery.BulkClient) {
-	for e := range work {
-		results <- processBulkEntry(e, client)
+func worker(ctx context.Context, work <-chan string, results chan<- BulkResponseItem, client *svrquery.BulkClient) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case e, ok := <-work:
+			if !ok {
+				return
+			}
+			item := processBulkEntry(e, client)
+			select {
+			case <-ctx.Done():
+				return
+			case results <- item:
+			}
+		}
 	}
 }
 
@@ -208,7 +239,7 @@ func processBulkEntry(entry string, client *svrquery.BulkClient) (item BulkRespo
 	return item
 }
 
-// pareEntry parses the details from entry returning the query and address sections.
+// parseEntry parses the details from entry returning the query and address sections.
 func parseEntry(entry string) (querySection, addressSection string, err error) {
 	entry = strings.TrimSpace(entry)
 	if entry == "" {
@@ -230,7 +261,7 @@ func parseOptions(querySection string) (baseQuery string, options []svrquery.Opt
 	for i := 1; i < len(protocolSections); i++ {
 		keyVal := strings.SplitN(protocolSections[i], "=", 2)
 		if len(keyVal) != 2 {
-			return "", nil, fmt.Errorf("key value pair invalid: %v", keyVal)
+			return "", nil, fmt.Errorf("%w: key value pair invalid: %v", errEntryInvalid, keyVal)
 
 		}
 
