@@ -79,13 +79,15 @@ and `gauge_N` numbers, for example:
 
 SQP v2 reuses the v1 metrics request bit for its flags-and-gauges chunk.
 The default `sqp` protocol remains version 1 and its `metrics` format is unchanged.
-The sample server supports only version 1; use a version 2 server for `sqp-v2`.
+The sample server supports both versions and returns empty performance data by
+default. Embedded responders can set `PerformanceFlags` and `PerformanceGauges`
+in `common.QueryState`.
 
 ### Example Server
 
 This tool also provides the ability to start a very basic sample server using a given protocol.
 
-Currently, only `sqp` is supported
+Currently, `sqp` and `sqp-v2` are supported.
 
 ```
 ./go-svrquery -server :12121 -proto sqp
