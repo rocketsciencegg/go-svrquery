@@ -7,7 +7,13 @@ server information requests.
 The sample implementation here will be enough to satisfy the requirements for Multiplay's scaling system to query
 the server for health, player counts and other useful information.
 
-`GetResponder` supports `sqp`, `tf2` (legacy version 1), `tf2e` (version 3),
+`GetResponder` supports `sqp`, `sqp-v2`, `tf2` (legacy version 1), `tf2e` (version 3),
 `tf2e-v7`, and `tf2e-v8`. TF2E requests must be unkeyed; the sample does not
 implement authentication or encryption, nor the version 9 or 10 schemas.
 The query client supports the TF2E variants, but not legacy `tf2`.
+
+The SQP responder accepts versions 1 and 2 (`sqp` and `sqp-v2` in
+`GetResponder`). Version 1 retains the `Metrics` float array. Version 2 uses
+`QueryState.PerformanceFlags` (at most 32 booleans) and
+`QueryState.PerformanceGauges` (at most 255 float32 values); empty slices produce
+an empty performance object in the client JSON.

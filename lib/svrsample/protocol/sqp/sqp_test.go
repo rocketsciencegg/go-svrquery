@@ -141,3 +141,52 @@ func TestSQPServer(t *testing.T) {
 		})
 	}
 }
+
+func TestShortPackets(t *testing.T) {
+	for n := 0; n < 8; n++ {
+		for _, header := range []byte{0, 1, 2} {
+			q, err := NewQueryResponder(common.QueryState{})
+			require.NoError(t, err)
+			packet := make([]byte, n)
+			if n > 0 {
+				packet[0] = header
+			}
+			require.NotPanics(t, func() {
+				_, err := q.Respond("client", packet)
+				if header == 0 && n >= 5 {
+					require.NoError(t, err)
+				} else {
+					require.Error(t, err)
+				}
+			})
+		}
+	}
+}
+
+func TestPerformanceStateLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		flags     int
+		gauges    int
+		wantError bool
+	}{
+		{"empty", 0, 0, false},
+		{"maximum", 32, 255, false},
+		{"flags overflow", 33, 0, true},
+		{"gauges overflow", 0, 256, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q, err := NewQueryResponder(common.QueryState{
+				PerformanceFlags:  make([]bool, tc.flags),
+				PerformanceGauges: make([]float32, tc.gauges),
+			})
+			if tc.wantError {
+				require.Error(t, err)
+				require.Nil(t, q)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, q)
+			}
+		})
+	}
+}

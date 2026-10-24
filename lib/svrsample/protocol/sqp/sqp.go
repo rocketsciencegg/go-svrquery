@@ -26,21 +26,26 @@ type challengeWireFormat struct {
 
 // queryWireFormat describes the format of an SQP query response
 type queryWireFormat struct {
-	Header           byte
-	Challenge        uint32
-	SQPVersion       uint16
-	CurrentPacketNum byte
-	LastPacketNum    byte
-	PayloadLength    uint16
-	ServerInfoLength *uint32
-	ServerInfo       *ServerInfo
-	MetricsLength    *uint32
-	Metrics          *Metrics
+	Header            byte
+	Challenge         uint32
+	SQPVersion        uint16
+	CurrentPacketNum  byte
+	LastPacketNum     byte
+	PayloadLength     uint16
+	ServerInfoLength  *uint32
+	ServerInfo        *ServerInfo
+	MetricsLength     *uint32
+	Metrics           *Metrics
+	PerformanceLength *uint32
+	Performance       *Performance
 }
 
 // NewQueryResponder returns creates a new responder capable of responding
 // to SQP-formatted queries.
 func NewQueryResponder(state common.QueryState) (*QueryResponder, error) {
+	if len(state.PerformanceFlags) > 32 || len(state.PerformanceGauges) > 255 {
+		return nil, errors.New("performance data exceeds wire-format limits")
+	}
 	q := &QueryResponder{
 		enc:   &common.Encoder{},
 		state: state,
@@ -63,12 +68,12 @@ func (q *QueryResponder) Respond(clientAddress string, buf []byte) ([]byte, erro
 
 // isChallenge determines if the input buffer corresponds to a challenge packet.
 func isChallenge(buf []byte) bool {
-	return bytes.Equal(buf[0:5], []byte{0, 0, 0, 0, 0})
+	return len(buf) >= 5 && bytes.Equal(buf[0:5], []byte{0, 0, 0, 0, 0})
 }
 
 // isQuery determines if the input buffer corresponds to a query packet.
 func isQuery(buf []byte) bool {
-	return buf[0] == 1
+	return len(buf) > 0 && buf[0] == 1
 }
 
 // handleChallenge handles an incoming challenge packet.
@@ -108,8 +113,9 @@ func (q *QueryResponder) handleQuery(clientAddress string, buf []byte) ([]byte, 
 		return nil, errors.New("challenge mismatch")
 	}
 
-	if binary.BigEndian.Uint16(buf[5:7]) != 1 {
-		return nil, fmt.Errorf("unsupported sqp version: %d", buf[6])
+	version := binary.BigEndian.Uint16(buf[5:7])
+	if version != 1 && version != 2 {
+		return nil, fmt.Errorf("unsupported sqp version: %d", version)
 	}
 
 	requestedChunks := buf[7]
@@ -119,7 +125,7 @@ func (q *QueryResponder) handleQuery(clientAddress string, buf []byte) ([]byte, 
 	f := queryWireFormat{
 		Header:     1,
 		Challenge:  expectedChallenge.(uint32),
-		SQPVersion: 1,
+		SQPVersion: version,
 	}
 
 	resp := bytes.NewBuffer(nil)
@@ -131,11 +137,17 @@ func (q *QueryResponder) handleQuery(clientAddress string, buf []byte) ([]byte, 
 		f.PayloadLength += uint16(*f.ServerInfoLength) + 4
 	}
 
-	if wantsMetrics {
+	if wantsMetrics && version == 1 {
 		f.Metrics = MetricsFromQueryState(q.state)
 		size := f.Metrics.Size()
 		f.MetricsLength = &size
 		f.PayloadLength += uint16(*f.MetricsLength) + 4
+	}
+	if wantsMetrics && version == 2 {
+		f.Performance = PerformanceFromQueryState(q.state)
+		size := f.Performance.Size()
+		f.PerformanceLength = &size
+		f.PayloadLength += uint16(size) + 4
 	}
 
 	if err := common.WireWrite(resp, q.enc, f); err != nil {

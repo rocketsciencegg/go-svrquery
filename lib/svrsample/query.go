@@ -17,7 +17,7 @@ var (
 // GetResponder gets the appropriate responder for the protocol provided
 func GetResponder(proto string, state common.QueryState) (common.QueryResponder, error) {
 	switch proto {
-	case "sqp":
+	case "sqp", "sqp-v2":
 		return sqp.NewQueryResponder(state)
 	case "tf2":
 		return tf2.NewQueryResponder(state, 1, false)

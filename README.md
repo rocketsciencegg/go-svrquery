@@ -79,13 +79,15 @@ and `gauge_N` numbers, for example:
 
 SQP v2 reuses the v1 metrics request bit for its flags-and-gauges chunk.
 The default `sqp` protocol remains version 1 and its `metrics` format is unchanged.
-The sample server supports only version 1; use a version 2 server for `sqp-v2`.
+The sample server supports both versions and returns empty performance data by
+default. Embedded responders can set `PerformanceFlags` and `PerformanceGauges`
+in `common.QueryState`.
 
 ### Example Server
 
 This tool also provides the ability to start a very basic sample server using a given protocol.
 
-Supported sample-server protocols are `sqp`, `tf2`, `tf2e`, `tf2e-v7`, and
+Supported sample-server protocols are `sqp`, `sqp-v2`, `tf2`, `tf2e`, `tf2e-v7`, and
 `tf2e-v8`. The TF2E sample responders use unkeyed queries; authentication and
 encryption are not implemented. The `tf2` responder emits the legacy version 1
 format, which the query client does not currently support.
