@@ -68,15 +68,19 @@ func TestQueryPerformanceProtocol(t *testing.T) {
 			old := os.Stdout
 			r, w, err := os.Pipe()
 			require.NoError(t, err)
+			writerClosed := false
 			t.Cleanup(func() {
 				os.Stdout = old
-				r.Close()
-				w.Close()
+				require.NoError(t, r.Close())
+				if !writerClosed {
+					require.NoError(t, w.Close())
+				}
 			})
 			os.Stdout = w
 			result, queryErr := q.Query()
 			os.Stdout = old
 			require.NoError(t, w.Close())
+			writerClosed = true
 			output, err := io.ReadAll(r)
 			require.NoError(t, err)
 			require.Empty(t, output)
