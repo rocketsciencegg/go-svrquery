@@ -6,3 +6,9 @@ server information requests.
 
 The sample implementation here will be enough to satisfy the requirements for Multiplay's scaling system to query
 the server for health, player counts and other useful information.
+
+The SQP responder accepts versions 1 and 2 (`sqp` and `sqp-v2` in
+`GetResponder`). Version 1 retains the `Metrics` float array. Version 2 uses
+`QueryState.PerformanceFlags` (at most 32 booleans) and
+`QueryState.PerformanceGauges` (at most 255 float32 values); empty slices produce
+an empty performance object in the client JSON.
