@@ -27,7 +27,7 @@ func TestQuerySampleServer(t *testing.T) {
 			require.NoError(t, err)
 			conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 			require.NoError(t, err)
-			defer conn.Close()
+			defer func() { require.NoError(t, conn.Close()) }()
 			done := make(chan error, 1)
 			go func() {
 				for i := 0; i < 2; i++ {
@@ -56,15 +56,19 @@ func TestQuerySampleServer(t *testing.T) {
 			old := os.Stdout
 			r, w, err := os.Pipe()
 			require.NoError(t, err)
+			writerClosed := false
 			t.Cleanup(func() {
 				os.Stdout = old
-				r.Close()
-				w.Close()
+				require.NoError(t, r.Close())
+				if !writerClosed {
+					require.NoError(t, w.Close())
+				}
 			})
 			os.Stdout = w
 			queryErr := query(proto, conn.LocalAddr().String(), "")
 			os.Stdout = old
 			require.NoError(t, w.Close())
+			writerClosed = true
 			data, err := io.ReadAll(r)
 			require.NoError(t, err)
 			require.NoError(t, queryErr)
