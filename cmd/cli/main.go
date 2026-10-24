@@ -16,7 +16,7 @@ import (
 
 func main() {
 	clientAddr := flag.String("addr", "", "Address to connect to e.g. 127.0.0.1:12345")
-	proto := flag.String("proto", "", "Protocol e.g. sqp, tf2e, tf2e-v7, tf2e-v8")
+	proto := flag.String("proto", "", "Protocol e.g. sqp, sqp-v2, tf2e, tf2e-v7, tf2e-v8")
 	key := flag.String("key", "", "Key to use to authenticate")
 	file := flag.String("file", "", "Bulk file to execute to get basic server information")
 	serverAddr := flag.String("server", "", "Address to start server e.g. 127.0.0.1:12121, :23232")
@@ -98,6 +98,7 @@ func server(l *log.Logger, proto, address string) error {
 		GameType:       "Game Type",
 		Map:            "Map",
 		Port:           1000,
+		Metrics:        []float32{-1, 0, 1, 3.14159, 1253.232, -933.32},
 	})
 	if err != nil {
 		return err

@@ -108,8 +108,9 @@ func (q *QueryResponder) handleQuery(clientAddress string, buf []byte) ([]byte, 
 		return nil, errors.New("challenge mismatch")
 	}
 
-	if binary.BigEndian.Uint16(buf[5:7]) != 1 {
-		return nil, fmt.Errorf("unsupported sqp version: %d", buf[6])
+	version := binary.BigEndian.Uint16(buf[5:7])
+	if version != 1 && version != 2 {
+		return nil, fmt.Errorf("unsupported sqp version: %d", version)
 	}
 
 	requestedChunks := buf[7]
@@ -119,7 +120,7 @@ func (q *QueryResponder) handleQuery(clientAddress string, buf []byte) ([]byte, 
 	f := queryWireFormat{
 		Header:     1,
 		Challenge:  expectedChallenge.(uint32),
-		SQPVersion: 1,
+		SQPVersion: version,
 	}
 
 	resp := bytes.NewBuffer(nil)

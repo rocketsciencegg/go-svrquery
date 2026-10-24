@@ -17,7 +17,7 @@ const (
 func newClient(requestedChunks byte) (*clienttest.MockClient, *queryer) {
 	m := &clienttest.MockClient{}
 	m.On("Address").Return("127.0.0.1:8000")
-	c := newQueryer(requestedChunks, DefaultMaxPacketSize, m)
+	c := newQueryer(requestedChunks, DefaultMaxPacketSize, 2, m)
 
 	return m, c
 }

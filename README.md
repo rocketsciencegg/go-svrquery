@@ -48,6 +48,13 @@ A cli is available in [GitHub releases](https://github.com/rocketsciencegg/go-sv
 
 This enables you make queries to servers using the specified protocol, and returns the response in pretty json.
 
+For SQP, `sqp` retains version 1 server-information-only queries. Use `sqp-v2`
+to request both server information and metrics using wire version 2:
+
+```go
+c, err := svrquery.NewClient("sqp-v2", "127.0.0.1:12121")
+```
+
 ### Client
 
 ```
@@ -71,11 +78,18 @@ This enables you make queries to servers using the specified protocol, and retur
 
 This tool also provides the ability to start a very basic sample server using a given protocol.
 
-Currently, only `sqp` is supported
+Currently, only SQP is supported, using `sqp` or `sqp-v2`.
 
 ```
 ./go-svrquery -server :12121 -proto sqp
 Starting sample server using protocol sqp on :12121
+```
+
+Both SQP sample server names accept wire versions 1 and 2. To retrieve its
+sample metrics, leave the server running with `-proto sqp` and query it with:
+
+```
+./go-svrquery -addr localhost:12121 -proto sqp-v2
 ```
 
 Documentation
