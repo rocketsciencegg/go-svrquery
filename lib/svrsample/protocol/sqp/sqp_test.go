@@ -3,11 +3,29 @@ package sqp
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"testing"
 
 	"github.com/multiplay/go-svrquery/lib/svrsample/common"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSQPServerUnsupportedVersion(t *testing.T) {
+	for _, version := range []uint16{0, 3, 258} {
+		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
+			q, err := NewQueryResponder(common.QueryState{})
+			require.NoError(t, err)
+			challenge, err := q.Respond("client", []byte{0, 0, 0, 0, 0})
+			require.NoError(t, err)
+			request := []byte{1, 0, 0, 0, 0, 0, 0, 0x11}
+			copy(request[1:5], challenge[1:5])
+			binary.BigEndian.PutUint16(request[5:7], version)
+			response, err := q.Respond("client", request)
+			require.EqualError(t, err, fmt.Sprintf("unsupported sqp version: %d", version))
+			require.Nil(t, response)
+		})
+	}
+}
 
 func TestQueryResponder_Respond(t *testing.T) {
 	setup := func(t *testing.T) *QueryResponder {
