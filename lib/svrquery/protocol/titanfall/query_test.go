@@ -1,9 +1,13 @@
 package titanfall
 
 import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
 	"testing"
 
 	"github.com/multiplay/go-svrquery/lib/svrquery/clienttest"
+	"github.com/multiplay/go-svrquery/lib/svrquery/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -247,4 +251,124 @@ Line 8: Some test text to be encrypted and decrypted`
 	decoded, err := p.decrypt(encoded)
 	require.NoError(t, err)
 	require.Equal(t, text, string(decoded))
+}
+
+func encodeClients(t *testing.T, version byte, clients []Client) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	write := func(v interface{}) {
+		require.NoError(t, binary.Write(&b, binary.LittleEndian, v))
+	}
+	for _, c := range clients {
+		write(c.ID)
+		b.WriteString(c.Name)
+		b.WriteByte(0)
+		write(c.TeamID)
+		if version > 3 {
+			b.WriteString(c.Address)
+			b.WriteByte(0)
+			write(c.Ping)
+			write(c.PacketsReceived)
+			write(c.PacketsDropped)
+		}
+		if version > 2 {
+			write(c.Score)
+			write(c.Kills)
+			write(c.Deaths)
+		}
+	}
+	write(uint64(0))
+	return b.Bytes()
+}
+
+func testClients(version byte) []Client {
+	clients := []Client{
+		{ID: 0x1122334455667788, Name: "Alice", TeamID: 1},
+		{ID: 0x8877665544332211, Name: "Bob", TeamID: 2},
+	}
+	for j := range clients {
+		if version > 3 {
+			clients[j].Address = fmt.Sprintf("192.0.2.%d:37015", j+1)
+			clients[j].Ping = uint32(20 + j)
+			clients[j].PacketsReceived = uint32(100 + j)
+			clients[j].PacketsDropped = uint32(2 + j)
+		}
+		if version > 2 {
+			clients[j].Score = uint32(40 + j)
+			clients[j].Kills = uint16(5 + j)
+			clients[j].Deaths = uint16(3 + j)
+		}
+	}
+	return clients
+}
+
+func TestClients(t *testing.T) {
+	for _, version := range []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10} {
+		for _, count := range []int{0, 1, 2} {
+			t.Run(fmt.Sprintf("v%d/count%d", version, count), func(t *testing.T) {
+				var expected []Client
+				if count > 0 {
+					expected = testClients(version)[:count]
+				}
+				data := encodeClients(t, version, expected)
+				r := common.NewBinaryReader(data, binary.LittleEndian)
+				info := &Info{Header: Header{Version: version}}
+				err := (&queryer{}).clients(r, info)
+				require.NoError(t, err)
+				require.Equal(t, expected, info.Clients)
+				var trailing byte
+				require.Error(t, r.Read(&trailing))
+			})
+		}
+	}
+}
+
+func TestClientsTruncated(t *testing.T) {
+	for _, version := range []byte{1, 3, 4, 10} {
+		data := encodeClients(t, version, testClients(version)[:1])
+		for length := 0; length < len(data); length++ {
+			t.Run(fmt.Sprintf("v%d/length%d", version, length), func(t *testing.T) {
+				r := common.NewBinaryReader(data[:length], binary.LittleEndian)
+				info := &Info{Header: Header{Version: version}}
+				require.Error(t, (&queryer{}).clients(r, info))
+				if length < len(data)-8 {
+					require.Empty(t, info.Clients)
+				}
+			})
+		}
+	}
+}
+
+func TestQueryWithClients(t *testing.T) {
+	expected := Info{
+		Header: Header{Prefix: -1, Command: ServerInfoResponse, Version: 1},
+		BasicInfo: BasicInfo{
+			Port: 37015, Platform: "PC", PlaylistNum: 307,
+			PlaylistName: "test", NumClients: 2, MaxClients: 60, Map: "test_map",
+		},
+		Clients: testClients(1),
+	}
+	var response bytes.Buffer
+	write := func(v interface{}) {
+		require.NoError(t, binary.Write(&response, binary.LittleEndian, v))
+	}
+	write(expected.Header)
+	write(expected.BasicInfo.Port)
+	response.WriteString("PC\x00\x00")
+	write(expected.BasicInfo.PlaylistNum)
+	response.WriteString("test\x00")
+	write(expected.BasicInfo.NumClients)
+	write(expected.BasicInfo.MaxClients)
+	response.WriteString("test_map\x00")
+	response.Write(encodeClients(t, 1, expected.Clients))
+
+	mc := &clienttest.MockClient{}
+	mc.On("Key").Return("")
+	mc.On("Write", mock.AnythingOfType("[]uint8")).Return(packetSize, nil).Once()
+	mc.On("Read", mock.AnythingOfType("[]uint8")).Return(response.Bytes(), nil).Once()
+	q := queryer{c: mc, version: 1}
+	info, err := q.Query()
+	require.NoError(t, err)
+	require.Equal(t, &expected, info)
+	mc.AssertExpectations(t)
 }

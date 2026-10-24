@@ -257,7 +257,7 @@ type Team struct {
 	Score uint16
 }
 
-// Client represents a team in a query response.
+// Client represents a client in a query response.
 type Client struct {
 	ID     uint64
 	Name   string
