@@ -98,6 +98,7 @@ func server(l *log.Logger, proto, address string) error {
 		GameType:       "Game Type",
 		Map:            "Map",
 		Port:           1000,
+		Metrics:        []float32{-1, 0, 1, 3.14159, 1253.232, -933.32},
 	})
 	if err != nil {
 		return err
