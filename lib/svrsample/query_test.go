@@ -55,7 +55,9 @@ func TestResponderUDP(t *testing.T) {
 			})
 			client, err := svrquery.NewClient(proto, conn.LocalAddr().String())
 			require.NoError(t, err)
-			defer client.Close()
+			t.Cleanup(func() {
+				require.NoError(t, client.Close())
+			})
 			response, err := client.Query()
 			require.NoError(t, err)
 			require.EqualValues(t, state.CurrentPlayers, response.NumClients())
