@@ -13,6 +13,15 @@ type MockClient struct {
 	mock.Mock
 }
 
+// NewMockClient registers mock failures and expectation checks with the test.
+func NewMockClient(t *testing.T) *MockClient {
+	t.Helper()
+	m := &MockClient{}
+	m.Test(t)
+	t.Cleanup(func() { m.AssertExpectations(t) })
+	return m
+}
+
 func (mc *MockClient) Address() string {
 	args := mc.Called()
 	return args.String(0)
