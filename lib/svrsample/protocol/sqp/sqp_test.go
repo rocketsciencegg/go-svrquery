@@ -3,6 +3,7 @@ package sqp
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"testing"
 
 	"github.com/multiplay/go-svrquery/lib/svrsample/common"
@@ -87,57 +88,78 @@ func TestSQPServer(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, q)
 
-	for _, tc := range testcases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Challenge packet
-			resp, err := q.Respond(addr, []byte{0, 0, 0, 0, 0})
-			require.NoError(t, err)
-			require.Equal(t, byte(0), resp[0])
+	for _, version := range []uint16{1, 2} {
+		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
+			for _, tc := range testcases {
+				t.Run(tc.name, func(t *testing.T) {
+					// Challenge packet
+					resp, err := q.Respond(addr, []byte{0, 0, 0, 0, 0})
+					require.NoError(t, err)
+					require.Equal(t, byte(0), resp[0])
 
-			// Requested chunks
-			var chunks byte
-			if tc.serverInfo {
-				chunks |= 0x1
+					// Requested chunks
+					var chunks byte
+					if tc.serverInfo {
+						chunks |= 0x1
+					}
+					if tc.metrics {
+						chunks |= 0x10
+					}
+
+					// Query packet
+					resp, err = q.Respond(
+						addr,
+						bytes.Join(
+							[][]byte{
+								{1},                // query request
+								resp[1:5],          // challenge
+								{0, byte(version)}, // SQP version
+								{chunks},           // Request chunks
+							},
+							nil,
+						),
+					)
+					require.NoError(t, err)
+
+					// convert packet length to []byte
+					pl := make([]byte, 2)
+					binary.BigEndian.PutUint16(pl, uint16(len(tc.expPayload)))
+
+					require.Equal(
+						t,
+						bytes.Join(
+							[][]byte{
+								{1},                // query response
+								resp[1:5],          // challenge
+								{0, byte(version)}, // SQP version
+								{0},                // current packet
+								{0},                // last packet
+								pl,                 // packet length
+								tc.expPayload,      // payload (chunks data)
+							},
+							nil,
+						),
+						resp,
+					)
+				})
 			}
-			if tc.metrics {
-				chunks |= 0x10
-			}
+		})
+	}
+}
 
-			// Query packet
-			resp, err = q.Respond(
-				addr,
-				bytes.Join(
-					[][]byte{
-						{1},       // query request
-						resp[1:5], // challenge
-						{0, 1},    // SQP version
-						{chunks},  // Request chunks
-					},
-					nil,
-				),
-			)
+func TestSQPServerUnsupportedVersion(t *testing.T) {
+	for _, version := range []uint16{0, 3, 258} {
+		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
+			q, err := NewQueryResponder(common.QueryState{})
 			require.NoError(t, err)
-
-			// convert packet length to []byte
-			pl := make([]byte, 2)
-			binary.BigEndian.PutUint16(pl, uint16(len(tc.expPayload)))
-
-			require.Equal(
-				t,
-				bytes.Join(
-					[][]byte{
-						{1},           // query response
-						resp[1:5],     // challenge
-						resp[5:7],     // SQP version
-						{0},           // current packet
-						{0},           // last packet
-						pl,            // packet length
-						tc.expPayload, // payload (chunks data)
-					},
-					nil,
-				),
-				resp,
-			)
+			challenge, err := q.Respond("client", []byte{0, 0, 0, 0, 0})
+			require.NoError(t, err)
+			request := []byte{1, 0, 0, 0, 0, 0, 0, 0x11}
+			copy(request[1:5], challenge[1:5])
+			binary.BigEndian.PutUint16(request[5:7], version)
+			response, err := q.Respond("client", request)
+			require.EqualError(t, err, fmt.Sprintf("unsupported sqp version: %d", version))
+			require.Nil(t, response)
 		})
 	}
 }

@@ -1,13 +1,100 @@
 package svrquery
 
 import (
+	"encoding/binary"
 	"fmt"
+	"net"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/multiplay/go-svrquery/lib/svrquery/protocol/sqp"
+	"github.com/multiplay/go-svrquery/lib/svrsample"
+	"github.com/multiplay/go-svrquery/lib/svrsample/common"
 	"github.com/stretchr/testify/require"
 )
+
+func TestSQPQuery(t *testing.T) {
+	for _, tc := range []struct {
+		proto     string
+		responder string
+		version   uint16
+		chunks    byte
+	}{
+		{"sqp", "sqp", sqp.Version, sqp.ServerInfo},
+		{"sqp-v2", "sqp", 2, sqp.ServerInfo | sqp.Metrics},
+		{"sqp-v2", "sqp-v2", 2, sqp.ServerInfo | sqp.Metrics},
+	} {
+		t.Run(tc.proto+"/"+tc.responder, func(t *testing.T) {
+			state := common.QueryState{
+				CurrentPlayers: 1,
+				MaxPlayers:     2,
+				ServerName:     "sample",
+				Map:            "map",
+				Metrics:        []float32{-1, 0, 1, 3.14159},
+			}
+			responder, err := svrsample.GetResponder(tc.responder, state)
+			require.NoError(t, err)
+			conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, conn.Close()) })
+			require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+
+			done := make(chan error, 1)
+			requests := make(chan []byte, 2)
+			go func() {
+				done <- func() error {
+					for i := 0; i < 2; i++ {
+						buf := make([]byte, 1472)
+						n, addr, err := conn.ReadFromUDP(buf)
+						if err != nil {
+							return err
+						}
+						requests <- buf[:n]
+						response, err := responder.Respond(addr.String(), buf[:n])
+						if err != nil {
+							return err
+						}
+						if _, err := conn.WriteToUDP(response, addr); err != nil {
+							return err
+						}
+					}
+					return nil
+				}()
+			}()
+
+			c, err := NewClient(tc.proto, conn.LocalAddr().String(), WithTimeout(time.Second))
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, c.Close()) })
+			response, queryErr := c.Query()
+			require.NoError(t, <-done, "sample responder failed")
+			require.NoError(t, queryErr)
+
+			require.Equal(t, []byte{0, 0, 0, 0, 0}, <-requests)
+			request := <-requests
+			require.Len(t, request, 8)
+			require.Equal(t, byte(1), request[0])
+			require.Equal(t, tc.version, binary.BigEndian.Uint16(request[5:7]))
+			require.Equal(t, tc.chunks, request[7])
+
+			qr, ok := response.(*sqp.QueryResponse)
+			require.True(t, ok)
+			require.Equal(t, tc.version, qr.Version)
+			require.NotNil(t, qr.ServerInfo)
+			require.Equal(t, state.ServerName, qr.ServerInfo.ServerName)
+			require.Equal(t, int64(state.CurrentPlayers), qr.NumClients())
+			require.Equal(t, int64(state.MaxPlayers), qr.MaxClients())
+			require.Equal(t, state.Map, qr.Map())
+			if tc.proto == "sqp-v2" {
+				require.NotNil(t, qr.Metrics)
+				require.Equal(t, byte(len(state.Metrics)), qr.Metrics.MetricCount)
+				require.Equal(t, state.Metrics, qr.Metrics.Metrics)
+			} else {
+				require.Nil(t, qr.Metrics)
+			}
+		})
+	}
+}
 
 func TestNewClient(t *testing.T) {
 	addr := "localhost:8000"
