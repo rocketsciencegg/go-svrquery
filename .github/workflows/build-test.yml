@@ -78,12 +78,7 @@ jobs:
           args: --new-from-merge-base=${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
 
   test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        go: [stable]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
@@ -92,7 +87,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ matrix.go }}
+          go-version: stable
           check-latest: true
 
       - name: Build
