@@ -1,4 +1,4 @@
-# go-svrquery [![Go Report Card](https://goreportcard.com/badge/github.com/multiplay/go-svrquery)](https://goreportcard.com/report/github.com/multiplay/go-svrquery) [![License](https://img.shields.io/badge/license-BSD-blue.svg)](https://github.com/multiplay/go-svrquery/blob/master/LICENSE) [![GoDoc](https://godoc.org/github.com/multiplay/go-svrquery?status.svg)](https://godoc.org/github.com/multiplay/go-svrquery) [![Build Status](https://travis-ci.org/multiplay/go-svrquery.svg?branch=master)](https://travis-ci.org/multiplay/go-svrquery)
+# go-svrquery [![Go Report Card](https://goreportcard.com/badge/github.com/multiplay/go-svrquery)](https://goreportcard.com/report/github.com/multiplay/go-svrquery) [![License](https://img.shields.io/badge/license-BSD-blue.svg)](https://github.com/rocketsciencegg/go-svrquery/blob/main/LICENSE) [![GoDoc](https://godoc.org/github.com/multiplay/go-svrquery?status.svg)](https://godoc.org/github.com/multiplay/go-svrquery) [![Build Status](https://github.com/rocketsciencegg/go-svrquery/actions/workflows/build-test.yml/badge.svg?branch=main)](https://github.com/rocketsciencegg/go-svrquery/actions/workflows/build-test.yml)
 
 go-svrquery is a [Go](http://golang.org/) client for talking to game servers using various query protocols.
 
@@ -44,7 +44,7 @@ func main() {
 
 CLI
 -------------
-A cli is available in github releases and also at https://github.com/multiplay/go-svrquery/tree/master/cmd/cli
+A cli is available in [GitHub releases](https://github.com/rocketsciencegg/go-svrquery/releases) and also at https://github.com/rocketsciencegg/go-svrquery/tree/main/cmd/cli
 
 This enables you make queries to servers using the specified protocol, and returns the response in pretty json.
 
