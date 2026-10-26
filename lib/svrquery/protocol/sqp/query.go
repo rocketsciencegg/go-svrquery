@@ -92,6 +92,15 @@ func (q *queryer) readQueryHeader() (uint16, byte, byte, uint16, error) {
 		return 0, 0, 0, 0, err
 	}
 
+	switch version {
+	case 1, 2:
+	default:
+		return 0, 0, 0, 0, NewErrMalformedPacketf("unsupported SQP version: %d", version)
+	}
+	if version != q.version {
+		return 0, 0, 0, 0, NewErrMalformedPacketf("expected SQP version %v, got %v", q.version, version)
+	}
+
 	var curPkt, lastPkt byte
 	if curPkt, err = q.reader.ReadByte(); err != nil {
 		return 0, 0, 0, 0, err
@@ -118,9 +127,6 @@ func (q *queryer) readQuery(requestedChunks byte) (*QueryResponse, error) {
 	version, _, _, pktLen, err := q.readQueryHeader()
 	if err != nil {
 		return nil, err
-	}
-	if q.version == 2 && version != q.version {
-		return nil, NewErrMalformedPacketf("expected SQP version %v, got %v", q.version, version)
 	}
 
 	// If the header says the body is empty, we should just return now
@@ -162,14 +168,17 @@ func (q *queryer) readQuerySinglePacket(r *packetReader, version uint16, request
 
 	if requestedChunks&Metrics > 0 {
 		// SQP v2 reuses the v1 metrics bit for flags and gauges.
-		if version == 2 {
-			if err := q.readQueryPerformanceInfo(qr, r); err != nil {
-				return nil, err
-			}
-		} else {
+		switch version {
+		case 1:
 			if err := q.readQueryMetrics(qr, r); err != nil {
 				return nil, err
 			}
+		case 2:
+			if err := q.readQueryPerformanceInfo(qr, r); err != nil {
+				return nil, err
+			}
+		default:
+			return nil, NewErrMalformedPacketf("unsupported SQP version: %d", version)
 		}
 	}
 

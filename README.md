@@ -79,6 +79,8 @@ and `gauge_N` numbers, for example:
 
 SQP v2 reuses the v1 metrics request bit for its flags-and-gauges chunk.
 The default `sqp` protocol remains version 1 and its `metrics` format is unchanged.
+Responses must use the requested version (1 or 2); unsupported or mismatched
+versions are rejected before decoding the response body.
 The sample server supports both versions and returns empty performance data by
 default. Embedded responders can set `PerformanceFlags` and `PerformanceGauges`
 in `common.QueryState`.

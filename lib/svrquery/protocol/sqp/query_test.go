@@ -120,6 +120,48 @@ func TestQueryer_Query(t *testing.T) {
 		_, err := q.Query()
 		require.ErrorContains(t, err, "expected SQP version 2, got 1")
 	})
+	t.Run("rejects-v2-response-to-v1-request", func(t *testing.T) {
+		q := setup(t, "sqp", 1, 2, ServerInfo)
+		_, err := q.Query()
+		require.ErrorContains(t, err, "expected SQP version 1, got 2")
+	})
+	t.Run("rejects-unsupported-version", func(t *testing.T) {
+		q := setup(t, "sqp", 1, 3, ServerInfo)
+		_, err := q.Query()
+		require.ErrorContains(t, err, "unsupported SQP version: 3")
+	})
+}
+
+func TestQueryer_ReadQuery(t *testing.T) {
+	setup := func(t *testing.T, response []byte) *queryer {
+		t.Helper()
+		m := clienttest.NewMockClient(t)
+		m.On("Read", mock.Anything).Return(response, nil).Once()
+		return newQueryer(ServerInfo, DefaultMaxPacketSize, m)
+	}
+
+	t.Run("unsupported-version-before-body", func(t *testing.T) {
+		q := setup(t, []byte{1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0xaa})
+		result, err := q.readQuery(ServerInfo)
+		require.ErrorContains(t, err, "unsupported SQP version: 3")
+		require.Nil(t, result)
+		remaining := make([]byte, 5)
+		_, err = io.ReadFull(q.reader, remaining)
+		require.NoError(t, err)
+		require.Equal(t, []byte{0, 0, 0, 1, 0xaa}, remaining, "packet metadata and body must remain unread")
+	})
+	t.Run("unsupported-version-with-empty-body", func(t *testing.T) {
+		q := setup(t, []byte{1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0})
+		result, err := q.readQuery(0)
+		require.ErrorContains(t, err, "unsupported SQP version: 3")
+		require.Nil(t, result)
+	})
+	t.Run("unsupported-version-with-truncated-header", func(t *testing.T) {
+		q := setup(t, []byte{1, 0, 0, 0, 0, 0, 3})
+		result, err := q.readQuery(0)
+		require.ErrorContains(t, err, "unsupported SQP version: 3")
+		require.Nil(t, result)
+	})
 }
 
 func requirePerformanceSuccess(t *testing.T, data []byte, packetLen uint32, expected *PerformanceInfoChunk) {
