@@ -82,11 +82,9 @@ func queryBulk(file string, output io.Writer) (err error) {
 			return fmt.Errorf("bulk client: %w", err)
 		}
 
-		wgWorkers.Add(1)
-		go func() {
-			defer wgWorkers.Done()
+		wgWorkers.Go(func() {
 			worker(ctx, work, results, c)
-		}()
+		})
 	}
 
 	// Create a writer to write the results to output as they become available.
