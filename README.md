@@ -71,7 +71,10 @@ This enables you make queries to servers using the specified protocol, and retur
 
 This tool also provides the ability to start a very basic sample server using a given protocol.
 
-Currently, only `sqp` is supported
+Supported sample-server protocols are `sqp`, `tf2`, `tf2e`, `tf2e-v7`, and
+`tf2e-v8`. The TF2E sample responders use unkeyed queries; authentication and
+encryption are not implemented. The `tf2` responder emits the legacy version 1
+format, which the query client does not currently support.
 
 ```
 ./go-svrquery -server :12121 -proto sqp
