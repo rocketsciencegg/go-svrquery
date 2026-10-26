@@ -133,35 +133,31 @@ func (q *queryer) readQuery(requestedChunks byte) (*QueryResponse, error) {
 
 func (q *queryer) readQuerySinglePacket(r *packetReader, version uint16, requestedChunks byte, pktLen uint32) (*QueryResponse, error) {
 	qr := &QueryResponse{Version: version, Address: q.c.Address()}
-	r = newPacketReader(io.LimitReader(r, int64(pktLen)))
+	packet := &io.LimitedReader{R: r, N: int64(pktLen)}
+	r = newPacketReader(packet)
 
-	l := int64(pktLen)
 	if requestedChunks&ServerInfo > 0 {
 		if err := q.readQueryServerInfo(qr, r); err != nil {
 			return nil, err
 		}
-		l -= int64(qr.ServerInfo.ChunkLength) + int64(Uint32.Size())
 	}
 
 	if requestedChunks&ServerRules > 0 {
 		if err := q.readQueryServerRules(qr, r); err != nil {
 			return nil, err
 		}
-		l -= int64(qr.ServerRules.ChunkLength) + int64(Uint32.Size())
 	}
 
 	if requestedChunks&PlayerInfo > 0 {
 		if err := q.readQueryPlayerInfo(qr, r); err != nil {
 			return nil, err
 		}
-		l -= int64(qr.PlayerInfo.ChunkLength) + int64(Uint32.Size())
 	}
 
 	if requestedChunks&TeamInfo > 0 {
 		if err := q.readQueryTeamInfo(qr, r); err != nil {
 			return nil, err
 		}
-		l -= int64(qr.TeamInfo.ChunkLength) + int64(Uint32.Size())
 	}
 
 	if requestedChunks&Metrics > 0 {
@@ -170,22 +166,17 @@ func (q *queryer) readQuerySinglePacket(r *packetReader, version uint16, request
 			if err := q.readQueryPerformanceInfo(qr, r); err != nil {
 				return nil, err
 			}
-			l -= int64(qr.PerformanceInfo.ChunkLength) + int64(Uint32.Size())
 		} else {
 			if err := q.readQueryMetrics(qr, r); err != nil {
 				return nil, err
 			}
-			l -= int64(qr.Metrics.ChunkLength) + int64(Uint32.Size())
 		}
 	}
 
-	if l < 0 {
-		return nil, ErrMalformedPacket("chunks exceed packet length")
-	}
-	if l > 0 {
+	if packet.N > 0 {
 		// If we have extra bytes remaining, we assume they are new fields from a future
 		// query version and discard them.
-		if _, err := io.CopyN(ioutil.Discard, r, l); err != nil {
+		if _, err := io.CopyN(ioutil.Discard, r, packet.N); err != nil {
 			return nil, err
 		}
 	}

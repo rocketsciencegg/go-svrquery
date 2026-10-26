@@ -161,6 +161,18 @@ func TestQueryer_ReadQuerySinglePacket(t *testing.T) {
 	t.Run("future-fields", func(t *testing.T) {
 		requirePerformanceSuccess(t, performanceChunk(t, 1, 1, nil, []byte{4, 5}), 12, &PerformanceInfoChunk{ChunkLength: 8, NumFlags: 1, Flags: 1, Gauges: []float32{}})
 	})
+	t.Run("future-packet-fields", func(t *testing.T) {
+		data := append(append([]byte{}, valid...), 4, 5)
+		requirePerformanceSuccess(t, data, 16, &PerformanceInfoChunk{ChunkLength: 10, NumFlags: 32, Flags: 1 << 31, Gauges: []float32{1.25}})
+	})
+	t.Run("truncated-packet-fields", func(t *testing.T) {
+		m := clienttest.NewMockClient(t)
+		m.On("Address").Return("127.0.0.1:8000").Once()
+		q := newQueryer(PerformanceInfo, DefaultMaxPacketSize, m)
+		result, err := q.readQuerySinglePacket(newPacketReader(bytes.NewReader(valid)), 2, PerformanceInfo, 16)
+		require.ErrorIs(t, err, io.EOF)
+		require.Nil(t, result)
+	})
 	t.Run("too-many-flags", func(t *testing.T) {
 		requirePerformanceError(t, performanceChunk(t, 33, 0, nil, nil), 10)
 	})
