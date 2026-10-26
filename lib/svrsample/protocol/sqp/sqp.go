@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"sync"
 
+	querysqp "github.com/multiplay/go-svrquery/lib/svrquery/protocol/sqp"
 	"github.com/multiplay/go-svrquery/lib/svrsample/common"
 )
 
@@ -73,7 +74,7 @@ func isChallenge(buf []byte) bool {
 
 // isQuery determines if the input buffer corresponds to a query packet.
 func isQuery(buf []byte) bool {
-	return len(buf) > 0 && buf[0] == 1
+	return len(buf) > 0 && buf[0] == querysqp.QueryRequestType
 }
 
 // handleChallenge handles an incoming challenge packet.
@@ -86,7 +87,7 @@ func (q *QueryResponder) handleChallenge(clientAddress string) ([]byte, error) {
 		resp,
 		q.enc,
 		challengeWireFormat{
-			Header:    0,
+			Header:    querysqp.ChallengeResponseType,
 			Challenge: v,
 		},
 	)
@@ -114,16 +115,16 @@ func (q *QueryResponder) handleQuery(clientAddress string, buf []byte) ([]byte, 
 	}
 
 	version := binary.BigEndian.Uint16(buf[5:7])
-	if version != 1 && version != 2 {
+	if version != querysqp.Version1 && version != querysqp.Version2 {
 		return nil, fmt.Errorf("unsupported sqp version: %d", version)
 	}
 
 	requestedChunks := buf[7]
-	wantsServerInfo := requestedChunks&0x1 == 1
-	wantsMetrics := requestedChunks&0x10 == 16
+	wantsServerInfo := requestedChunks&querysqp.ServerInfo != 0
+	wantsMetrics := requestedChunks&querysqp.Metrics != 0
 
 	f := queryWireFormat{
-		Header:     1,
+		Header:     querysqp.QueryResponseType,
 		Challenge:  expectedChallenge.(uint32),
 		SQPVersion: version,
 	}
@@ -137,13 +138,13 @@ func (q *QueryResponder) handleQuery(clientAddress string, buf []byte) ([]byte, 
 		f.PayloadLength += uint16(*f.ServerInfoLength) + 4
 	}
 
-	if wantsMetrics && version == 1 {
+	if wantsMetrics && version == querysqp.Version1 {
 		f.Metrics = MetricsFromQueryState(q.state)
 		size := f.Metrics.Size()
 		f.MetricsLength = &size
 		f.PayloadLength += uint16(*f.MetricsLength) + 4
 	}
-	if wantsMetrics && version == 2 {
+	if wantsMetrics && version == querysqp.Version2 {
 		f.Performance = PerformanceFromQueryState(q.state)
 		size := f.Performance.Size()
 		f.PerformanceLength = &size
