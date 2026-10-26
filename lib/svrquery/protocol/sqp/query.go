@@ -25,7 +25,7 @@ func newCreator(c protocol.Client) protocol.Queryer {
 
 func newCreatorV2(c protocol.Client) protocol.Queryer {
 	q := newQueryer(ServerInfo|PerformanceInfo, DefaultMaxPacketSize, c)
-	q.version = 2
+	q.version = Version2
 	return q
 }
 
@@ -93,7 +93,7 @@ func (q *queryer) readQueryHeader() (uint16, byte, byte, uint16, error) {
 	}
 
 	switch version {
-	case 1, 2:
+	case Version1, Version2:
 	default:
 		return 0, 0, 0, 0, NewErrMalformedPacketf("unsupported SQP version: %d", version)
 	}
@@ -169,16 +169,14 @@ func (q *queryer) readQuerySinglePacket(r *packetReader, version uint16, request
 	if requestedChunks&Metrics > 0 {
 		// SQP v2 reuses the v1 metrics bit for flags and gauges.
 		switch version {
-		case 1:
+		case Version1:
 			if err := q.readQueryMetrics(qr, r); err != nil {
 				return nil, err
 			}
-		case 2:
+		case Version2:
 			if err := q.readQueryPerformanceInfo(qr, r); err != nil {
 				return nil, err
 			}
-		default:
-			return nil, NewErrMalformedPacketf("unsupported SQP version: %d", version)
 		}
 	}
 
