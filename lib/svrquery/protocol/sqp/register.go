@@ -6,4 +6,5 @@ import (
 
 func init() {
 	protocol.MustRegister("sqp", newCreator)
+	protocol.MustRegister("sqp-v2", newCreatorV2)
 }

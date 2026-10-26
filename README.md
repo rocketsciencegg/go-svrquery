@@ -67,11 +67,29 @@ This enables you make queries to servers using the specified protocol, and retur
 }
 ```
 
+### SQP performance reporting
+
+Use `-proto sqp-v2` to request SQP version 2 server information and performance
+data. The `performance_info` JSON object contains zero-based `flag_N` booleans
+and `gauge_N` numbers, for example:
+
+```json
+{"flag_0": true, "flag_1": false, "gauge_0": 60}
+```
+
+SQP v2 reuses the v1 metrics request bit for its flags-and-gauges chunk.
+The default `sqp` protocol remains version 1 and its `metrics` format is unchanged.
+Responses must use the requested version (1 or 2); unsupported or mismatched
+versions are rejected before decoding the response body.
+The sample server supports both versions and returns empty performance data by
+default. Embedded responders can set `PerformanceFlags` and `PerformanceGauges`
+in `common.QueryState`.
+
 ### Example Server
 
 This tool also provides the ability to start a very basic sample server using a given protocol.
 
-Supported sample-server protocols are `sqp`, `tf2`, `tf2e`, `tf2e-v7`, and
+Supported sample-server protocols are `sqp`, `sqp-v2`, `tf2`, `tf2e`, `tf2e-v7`, and
 `tf2e-v8`. The TF2E sample responders use unkeyed queries; authentication and
 encryption are not implemented. The `tf2` responder emits the legacy version 1
 format, which the query client does not currently support.

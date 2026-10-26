@@ -16,7 +16,7 @@ import (
 
 func main() {
 	clientAddr := flag.String("addr", "", "Address to connect to e.g. 127.0.0.1:12345")
-	proto := flag.String("proto", "", "Protocol e.g. sqp, tf2e, tf2e-v7, tf2e-v8")
+	proto := flag.String("proto", "", "Protocol e.g. sqp, sqp-v2, tf2e, tf2e-v7, tf2e-v8")
 	key := flag.String("key", "", "Key to use to authenticate")
 	file := flag.String("file", "", "Bulk file to execute to get basic server information")
 	serverAddr := flag.String("server", "", "Address to start server e.g. 127.0.0.1:12121, :23232")
@@ -115,13 +115,13 @@ func server(l *log.Logger, proto, address string) error {
 
 	for {
 		buf := make([]byte, 16)
-		_, to, err := conn.ReadFromUDP(buf)
+		n, to, err := conn.ReadFromUDP(buf)
 		if err != nil {
 			l.Println("read from udp", err)
 			continue
 		}
 
-		resp, err := responder.Respond(to.String(), buf)
+		resp, err := responder.Respond(to.String(), buf[:n])
 		if err != nil {
 			l.Println("error responding to query", err)
 			continue

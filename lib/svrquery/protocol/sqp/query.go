@@ -16,10 +16,17 @@ type queryer struct {
 	reader          *packetReader
 	challengeID     uint32
 	requestedChunks byte
+	version         uint16
 }
 
 func newCreator(c protocol.Client) protocol.Queryer {
 	return newQueryer(ServerInfo, DefaultMaxPacketSize, c)
+}
+
+func newCreatorV2(c protocol.Client) protocol.Queryer {
+	q := newQueryer(ServerInfo|PerformanceInfo, DefaultMaxPacketSize, c)
+	q.version = Version2
+	return q
 }
 
 func newQueryer(requestedChunks byte, maxPktSize int, c protocol.Client) *queryer {
@@ -28,6 +35,7 @@ func newQueryer(requestedChunks byte, maxPktSize int, c protocol.Client) *querye
 		maxPktSize:      maxPktSize,
 		requestedChunks: requestedChunks,
 		reader:          newPacketReader(bufio.NewReaderSize(c, maxPktSize)),
+		version:         Version,
 	}
 }
 
@@ -55,7 +63,7 @@ func (q *queryer) sendQuery(requestedChunks byte) error {
 		return err
 	}
 
-	if err := binary.Write(pkt, binary.BigEndian, Version); err != nil {
+	if err := binary.Write(pkt, binary.BigEndian, q.version); err != nil {
 		return err
 	}
 
@@ -82,6 +90,16 @@ func (q *queryer) readQueryHeader() (uint16, byte, byte, uint16, error) {
 	var version uint16
 	if version, err = q.reader.ReadUint16(); err != nil {
 		return 0, 0, 0, 0, err
+	}
+
+	switch version {
+	case Version1, Version2:
+	default:
+		return 0, 0, 0, 0, NewErrMalformedPacketf("unsupported SQP version: %d", version)
+	}
+
+	if version != q.version {
+		return 0, 0, 0, 0, NewErrMalformedPacketf("expected SQP version %v, got %v", q.version, version)
 	}
 
 	var curPkt, lastPkt byte
@@ -122,52 +140,104 @@ func (q *queryer) readQuery(requestedChunks byte) (*QueryResponse, error) {
 
 func (q *queryer) readQuerySinglePacket(r *packetReader, version uint16, requestedChunks byte, pktLen uint32) (*QueryResponse, error) {
 	qr := &QueryResponse{Version: version, Address: q.c.Address()}
+	packet := &io.LimitedReader{R: r, N: int64(pktLen)}
+	r = newPacketReader(packet)
 
-	l := pktLen
 	if requestedChunks&ServerInfo > 0 {
 		if err := q.readQueryServerInfo(qr, r); err != nil {
 			return nil, err
 		}
-		l -= qr.ServerInfo.ChunkLength + uint32(Uint32.Size())
 	}
 
 	if requestedChunks&ServerRules > 0 {
 		if err := q.readQueryServerRules(qr, r); err != nil {
 			return nil, err
 		}
-		l -= qr.ServerRules.ChunkLength + uint32(Uint32.Size())
 	}
 
 	if requestedChunks&PlayerInfo > 0 {
 		if err := q.readQueryPlayerInfo(qr, r); err != nil {
 			return nil, err
 		}
-		l -= qr.PlayerInfo.ChunkLength + uint32(Uint32.Size())
 	}
 
 	if requestedChunks&TeamInfo > 0 {
 		if err := q.readQueryTeamInfo(qr, r); err != nil {
 			return nil, err
 		}
-		l -= qr.TeamInfo.ChunkLength + uint32(Uint32.Size())
 	}
 
 	if requestedChunks&Metrics > 0 {
-		if err := q.readQueryMetrics(qr, r); err != nil {
-			return nil, err
+		// SQP v2 reuses the v1 metrics bit for flags and gauges.
+		switch version {
+		case Version1:
+			if err := q.readQueryMetrics(qr, r); err != nil {
+				return nil, err
+			}
+		case Version2:
+			if err := q.readQueryPerformanceInfo(qr, r); err != nil {
+				return nil, err
+			}
 		}
-		l -= qr.Metrics.ChunkLength + uint32(Uint32.Size())
 	}
 
-	if l > 0 {
+	if packet.N > 0 {
 		// If we have extra bytes remaining, we assume they are new fields from a future
 		// query version and discard them.
-		if _, err := io.CopyN(ioutil.Discard, r, int64(l)); err != nil {
+		if _, err := io.CopyN(ioutil.Discard, r, packet.N); err != nil {
 			return nil, err
 		}
 	}
 
 	return qr, nil
+}
+
+func (q *queryer) readQueryPerformanceInfo(qr *QueryResponse, r *packetReader) error {
+	length, err := r.ReadUint32()
+	if err != nil {
+		return err
+	}
+
+	if length < 6 {
+		return ErrMalformedPacket("performance chunk is shorter than its header")
+	}
+
+	r = newPacketReader(io.LimitReader(r, int64(length)))
+	info := &PerformanceInfoChunk{ChunkLength: length}
+	if info.NumFlags, err = r.ReadByte(); err != nil {
+		return err
+	}
+
+	if info.NumFlags > 32 {
+		return ErrMalformedPacket("performance flag count exceeds 32")
+	}
+
+	if info.Flags, err = r.ReadUint32(); err != nil {
+		return err
+	}
+
+	count, err := r.ReadByte()
+	if err != nil {
+		return err
+	}
+
+	required := uint32(6) + uint32(count)*4
+	if required > length {
+		return ErrMalformedPacket("performance gauges exceed chunk length")
+	}
+
+	info.Gauges = make([]float32, int(count))
+	for i := range info.Gauges {
+		if info.Gauges[i], err = r.ReadFloat32(); err != nil {
+			return err
+		}
+	}
+	if _, err := io.CopyN(ioutil.Discard, r, int64(length-required)); err != nil {
+		return err
+	}
+
+	qr.PerformanceInfo = info
+	return nil
 }
 
 func (q *queryer) readQueryServerInfo(qr *QueryResponse, r *packetReader) (err error) {

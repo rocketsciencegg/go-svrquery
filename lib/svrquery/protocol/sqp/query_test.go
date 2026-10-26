@@ -3,9 +3,12 @@ package sqp
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
+	"os"
 	"testing"
 
 	"github.com/multiplay/go-svrquery/lib/svrquery/clienttest"
+	"github.com/multiplay/go-svrquery/lib/svrquery/protocol"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -13,6 +16,226 @@ import (
 const (
 	testDir = "testdata"
 )
+
+func performanceChunk(t *testing.T, flags byte, bits uint32, gauges []float32, extra []byte) []byte {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	require.NoError(t, binary.Write(buf, binary.BigEndian, uint32(6+4*len(gauges)+len(extra))))
+	require.NoError(t, buf.WriteByte(flags))
+	require.NoError(t, binary.Write(buf, binary.BigEndian, bits))
+	require.NoError(t, buf.WriteByte(byte(len(gauges))))
+	require.NoError(t, binary.Write(buf, binary.BigEndian, gauges))
+	_, err := buf.Write(extra)
+	require.NoError(t, err)
+	return buf.Bytes()
+}
+
+func TestQueryer_Query(t *testing.T) {
+	setup := func(t *testing.T, name string, version, responseVersion uint16, chunks byte) protocol.Queryer {
+		t.Helper()
+		m := clienttest.NewMockClient(t)
+		m.On("Address").Return("127.0.0.1:8000").Maybe()
+		creator, err := protocol.Get(name)
+		require.NoError(t, err)
+		m.On("Write", []byte{0, 0, 0, 0, 0}).Return(5, nil).Once()
+		m.On("Read", mock.Anything).Return([]byte{0, 0, 0, 0, 1}, nil).Once()
+		request := []byte{1, 0, 0, 0, 1, 0, byte(version), chunks}
+		m.On("Write", request).Return(len(request), nil).Once()
+		info := clienttest.LoadData(t, testDir, "info_single_response")[11:]
+		payload := append([]byte{}, info...)
+
+		if responseVersion == 2 {
+			payload = append(payload, performanceChunk(t, 3, 5, []float32{60, -1.5}, nil)...)
+		}
+
+		response := []byte{1, 0, 0, 0, 1, 0, byte(responseVersion), 0, 0, byte(len(payload) >> 8), byte(len(payload))}
+		response = append(response, payload...)
+		m.On("Read", mock.Anything).Return(response, nil).Once()
+		return creator(m)
+	}
+
+	t.Run("v1-server-info", func(t *testing.T) {
+		q := setup(t, "sqp", 1, 1, ServerInfo)
+		result, err := q.Query()
+		require.NoError(t, err)
+		require.Equal(t, &QueryResponse{
+			Version: 1,
+			Address: "127.0.0.1:8000",
+			ServerInfo: &ServerInfoChunk{
+				ChunkLength:    26,
+				CurrentPlayers: 5,
+				MaxPlayers:     10,
+				ServerName:     "my server",
+				GameType:       "ctf",
+				BuildID:        "1",
+				Map:            "map",
+				Port:           1025,
+			},
+		}, result)
+	})
+
+	t.Run("v2-performance-without-stdout", func(t *testing.T) {
+		q := setup(t, "sqp-v2", 2, 2, ServerInfo|PerformanceInfo)
+		old := os.Stdout
+		r, w, err := os.Pipe()
+		require.NoError(t, err)
+		writerClosed := false
+		t.Cleanup(func() {
+			os.Stdout = old
+			require.NoError(t, r.Close())
+			if !writerClosed {
+				require.NoError(t, w.Close())
+			}
+		})
+		os.Stdout = w
+		result, err := q.Query()
+		require.NoError(t, err)
+		os.Stdout = old
+		require.NoError(t, w.Close())
+		writerClosed = true
+		output, err := io.ReadAll(r)
+		require.NoError(t, err)
+		require.Empty(t, output)
+		qr, ok := result.(*QueryResponse)
+		require.True(t, ok)
+		require.Equal(t, &QueryResponse{
+			Version: 2,
+			Address: "127.0.0.1:8000",
+			ServerInfo: &ServerInfoChunk{
+				ChunkLength:    26,
+				CurrentPlayers: 5,
+				MaxPlayers:     10,
+				ServerName:     "my server",
+				GameType:       "ctf",
+				BuildID:        "1",
+				Map:            "map",
+				Port:           1025,
+			},
+			PerformanceInfo: &PerformanceInfoChunk{ChunkLength: 14, NumFlags: 3, Flags: 5, Gauges: []float32{60, -1.5}},
+		}, qr)
+	})
+
+	t.Run("rejects-v1-response-to-v2-request", func(t *testing.T) {
+		q := setup(t, "sqp-v2", 2, 1, ServerInfo|PerformanceInfo)
+		_, err := q.Query()
+		require.ErrorContains(t, err, "expected SQP version 2, got 1")
+	})
+	t.Run("rejects-v2-response-to-v1-request", func(t *testing.T) {
+		q := setup(t, "sqp", 1, 2, ServerInfo)
+		_, err := q.Query()
+		require.ErrorContains(t, err, "expected SQP version 1, got 2")
+	})
+	t.Run("rejects-unsupported-version", func(t *testing.T) {
+		q := setup(t, "sqp", 1, 3, ServerInfo)
+		_, err := q.Query()
+		require.ErrorContains(t, err, "unsupported SQP version: 3")
+	})
+}
+
+func TestQueryer_ReadQuery(t *testing.T) {
+	setup := func(t *testing.T, response []byte) *queryer {
+		t.Helper()
+		m := clienttest.NewMockClient(t)
+		m.On("Read", mock.Anything).Return(response, nil).Once()
+		return newQueryer(ServerInfo, DefaultMaxPacketSize, m)
+	}
+
+	t.Run("unsupported-version-before-body", func(t *testing.T) {
+		q := setup(t, []byte{1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0xaa})
+		result, err := q.readQuery(ServerInfo)
+		require.ErrorContains(t, err, "unsupported SQP version: 3")
+		require.Nil(t, result)
+		remaining := make([]byte, 5)
+		_, err = io.ReadFull(q.reader, remaining)
+		require.NoError(t, err)
+		require.Equal(t, []byte{0, 0, 0, 1, 0xaa}, remaining, "packet metadata and body must remain unread")
+	})
+	t.Run("unsupported-version-with-empty-body", func(t *testing.T) {
+		q := setup(t, []byte{1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0})
+		result, err := q.readQuery(0)
+		require.ErrorContains(t, err, "unsupported SQP version: 3")
+		require.Nil(t, result)
+	})
+	t.Run("unsupported-version-with-truncated-header", func(t *testing.T) {
+		q := setup(t, []byte{1, 0, 0, 0, 0, 0, 3})
+		result, err := q.readQuery(0)
+		require.ErrorContains(t, err, "unsupported SQP version: 3")
+		require.Nil(t, result)
+	})
+}
+
+func requirePerformanceSuccess(t *testing.T, data []byte, packetLen uint32, expected *PerformanceInfoChunk) {
+	t.Helper()
+	m := clienttest.NewMockClient(t)
+	m.On("Address").Return("127.0.0.1:8000").Once()
+	q := newQueryer(PerformanceInfo, DefaultMaxPacketSize, m)
+	stream := bytes.NewBuffer(append(append([]byte{}, data...), 0xaa))
+	result, err := q.readQuerySinglePacket(newPacketReader(stream), 2, PerformanceInfo, packetLen)
+	require.NoError(t, err)
+	require.Equal(t, &QueryResponse{Version: 2, Address: "127.0.0.1:8000", PerformanceInfo: expected}, result)
+	require.Equal(t, []byte{0xaa}, stream.Bytes())
+}
+
+func requirePerformanceError(t *testing.T, data []byte, packetLen uint32) {
+	t.Helper()
+	m := clienttest.NewMockClient(t)
+	m.On("Address").Return("127.0.0.1:8000").Once()
+	q := newQueryer(PerformanceInfo, DefaultMaxPacketSize, m)
+	stream := bytes.NewBuffer(append(append([]byte{}, data...), 0xaa))
+	result, err := q.readQuerySinglePacket(newPacketReader(stream), 2, PerformanceInfo, packetLen)
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.GreaterOrEqual(t, stream.Len(), 1, "must not consume the next packet")
+}
+
+func TestQueryer_ReadQuerySinglePacket(t *testing.T) {
+	valid := performanceChunk(t, 32, 1<<31, []float32{1.25}, nil)
+	t.Run("valid", func(t *testing.T) {
+		requirePerformanceSuccess(t, valid, 14, &PerformanceInfoChunk{ChunkLength: 10, NumFlags: 32, Flags: 1 << 31, Gauges: []float32{1.25}})
+	})
+	t.Run("maximum-gauges", func(t *testing.T) {
+		data := performanceChunk(t, 32, 1<<31, make([]float32, 255), nil)
+		requirePerformanceSuccess(t, data, 1030, &PerformanceInfoChunk{ChunkLength: 1026, NumFlags: 32, Flags: 1 << 31, Gauges: make([]float32, 255)})
+	})
+	t.Run("empty", func(t *testing.T) {
+		requirePerformanceSuccess(t, performanceChunk(t, 0, 0, nil, nil), 10, &PerformanceInfoChunk{ChunkLength: 6, Gauges: []float32{}})
+	})
+	t.Run("future-fields", func(t *testing.T) {
+		requirePerformanceSuccess(t, performanceChunk(t, 1, 1, nil, []byte{4, 5}), 12, &PerformanceInfoChunk{ChunkLength: 8, NumFlags: 1, Flags: 1, Gauges: []float32{}})
+	})
+	t.Run("future-packet-fields", func(t *testing.T) {
+		data := append(append([]byte{}, valid...), 4, 5)
+		requirePerformanceSuccess(t, data, 16, &PerformanceInfoChunk{ChunkLength: 10, NumFlags: 32, Flags: 1 << 31, Gauges: []float32{1.25}})
+	})
+	t.Run("truncated-packet-fields", func(t *testing.T) {
+		m := clienttest.NewMockClient(t)
+		m.On("Address").Return("127.0.0.1:8000").Once()
+		q := newQueryer(PerformanceInfo, DefaultMaxPacketSize, m)
+		result, err := q.readQuerySinglePacket(newPacketReader(bytes.NewReader(valid)), 2, PerformanceInfo, 16)
+		require.ErrorIs(t, err, io.EOF)
+		require.Nil(t, result)
+	})
+	t.Run("too-many-flags", func(t *testing.T) {
+		requirePerformanceError(t, performanceChunk(t, 33, 0, nil, nil), 10)
+	})
+	t.Run("too-many-gauges", func(t *testing.T) {
+		data := append([]byte{}, valid...)
+		data[9] = 2
+		requirePerformanceError(t, data, 14)
+	})
+	t.Run("short-chunk-header", func(t *testing.T) {
+		requirePerformanceError(t, []byte{0, 0, 0, 5, 0, 0, 0, 0, 0}, 9)
+	})
+	t.Run("truncated-gauge", func(t *testing.T) {
+		requirePerformanceError(t, valid[:len(valid)-1], 13)
+	})
+	t.Run("chunk-exceeds-packet", func(t *testing.T) {
+		requirePerformanceError(t, valid, 13)
+	})
+	t.Run("truncated-future-fields", func(t *testing.T) {
+		requirePerformanceError(t, performanceChunk(t, 0, 0, nil, []byte{1})[:10], 10)
+	})
+}
 
 func newClient(requestedChunks byte) (*clienttest.MockClient, *queryer) {
 	m := &clienttest.MockClient{}
