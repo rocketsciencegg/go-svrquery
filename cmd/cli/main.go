@@ -92,13 +92,15 @@ func serverMode(l *log.Logger, proto, serverAddr string) {
 func server(l *log.Logger, proto, address string) error {
 	l.Printf("Starting sample server using protocol %s on %s", proto, address)
 	responder, err := svrsample.GetResponder(proto, common.QueryState{
-		CurrentPlayers: 1,
-		MaxPlayers:     2,
-		ServerName:     "Name",
-		GameType:       "Game Type",
-		Map:            "Map",
-		Port:           1000,
-		Metrics:        []float32{-1, 0, 1, 3.14159, 1253.232, -933.32},
+		CurrentPlayers:    1,
+		MaxPlayers:        2,
+		ServerName:        "Name",
+		GameType:          "Game Type",
+		Map:               "Map",
+		Port:              1000,
+		Metrics:           []float32{-1, 0, 1, 3.14159, 1253.232, -933.32},
+		PerformanceFlags:  []bool{true, false, true},
+		PerformanceGauges: []float32{-1, 0, 1, 3.14159, 1253.232, -933.32},
 	})
 	if err != nil {
 		return err

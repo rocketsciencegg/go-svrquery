@@ -6,26 +6,17 @@ import (
 	"fmt"
 	"testing"
 
+	querysqp "github.com/multiplay/go-svrquery/lib/svrquery/protocol/sqp"
 	"github.com/multiplay/go-svrquery/lib/svrsample/common"
 	"github.com/stretchr/testify/require"
 )
 
-func TestSQPServerUnsupportedVersion(t *testing.T) {
-	for _, version := range []uint16{0, 3, 258} {
-		t.Run(fmt.Sprintf("v%d", version), func(t *testing.T) {
-			q, err := NewQueryResponder(common.QueryState{})
-			require.NoError(t, err)
-			challenge, err := q.Respond("client", []byte{0, 0, 0, 0, 0})
-			require.NoError(t, err)
-			request := []byte{1, 0, 0, 0, 0, 0, 0, 0x11}
-			copy(request[1:5], challenge[1:5])
-			binary.BigEndian.PutUint16(request[5:7], version)
-			response, err := q.Respond("client", request)
-			require.EqualError(t, err, fmt.Sprintf("unsupported sqp version: %d", version))
-			require.Nil(t, response)
-		})
-	}
-}
+const (
+	// unsupportedSQPVersion is the first version above the supported range.
+	unsupportedSQPVersion = querysqp.Version2 + 1
+	// highByteSQPVersion detects validation of only the low version byte.
+	highByteSQPVersion = 1<<8 | querysqp.Version2
+)
 
 func TestQueryResponder_Respond(t *testing.T) {
 	setup := func(t *testing.T) *QueryResponder {
@@ -49,21 +40,33 @@ func TestQueryResponder_Respond(t *testing.T) {
 		0xc2, 0xf6, 0xe9, 0x79,
 	}
 
+	t.Run("zero-version", func(t *testing.T) {
+		q := setup(t)
+		requireUnsupportedSQPVersion(t, q, 0)
+	})
+	t.Run("future-version", func(t *testing.T) {
+		q := setup(t)
+		requireUnsupportedSQPVersion(t, q, unsupportedSQPVersion)
+	})
+	t.Run("high-byte-version", func(t *testing.T) {
+		q := setup(t)
+		requireUnsupportedSQPVersion(t, q, highByteSQPVersion)
+	})
 	t.Run("empty", func(t *testing.T) {
 		q := setup(t)
 		requireQueryPayload(t, q, 0, nil)
 	})
 	t.Run("server-info-only", func(t *testing.T) {
 		q := setup(t)
-		requireQueryPayload(t, q, 1, serverInfo)
+		requireQueryPayload(t, q, querysqp.ServerInfo, serverInfo)
 	})
 	t.Run("metrics-only", func(t *testing.T) {
 		q := setup(t)
-		requireQueryPayload(t, q, 16, metrics)
+		requireQueryPayload(t, q, querysqp.Metrics, metrics)
 	})
 	t.Run("server-info-and-metrics", func(t *testing.T) {
 		q := setup(t)
-		requireQueryPayload(t, q, 17, append(append([]byte{}, serverInfo...), metrics...))
+		requireQueryPayload(t, q, querysqp.ServerInfo|querysqp.Metrics, append(append([]byte{}, serverInfo...), metrics...))
 	})
 	t.Run("nil-input", func(t *testing.T) {
 		q := setup(t)
@@ -105,6 +108,22 @@ func TestQueryResponder_Respond(t *testing.T) {
 			require.ErrorContains(t, err, "unsupported query")
 		}
 	})
+}
+
+func requireUnsupportedSQPVersion(t *testing.T, q *QueryResponder, version uint16) {
+	t.Helper()
+	const address = "client"
+	challenge, err := q.Respond(address, make([]byte, binary.Size(challengeWireFormat{})))
+	require.NoError(t, err)
+	request := bytes.NewBuffer(nil)
+	require.NoError(t, request.WriteByte(querysqp.QueryRequestType))
+	_, err = request.Write(challenge[1:])
+	require.NoError(t, err)
+	require.NoError(t, binary.Write(request, binary.BigEndian, version))
+	require.NoError(t, request.WriteByte(querysqp.ServerInfo|querysqp.Metrics))
+	response, err := q.Respond(address, request.Bytes())
+	require.EqualError(t, err, fmt.Sprintf("unsupported sqp version: %d", version))
+	require.Nil(t, response)
 }
 
 func requireQueryPayload(t *testing.T, q *QueryResponder, chunks byte, payload []byte) {
