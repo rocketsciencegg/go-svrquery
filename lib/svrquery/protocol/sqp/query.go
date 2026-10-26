@@ -97,6 +97,7 @@ func (q *queryer) readQueryHeader() (uint16, byte, byte, uint16, error) {
 	default:
 		return 0, 0, 0, 0, NewErrMalformedPacketf("unsupported SQP version: %d", version)
 	}
+
 	if version != q.version {
 		return 0, 0, 0, 0, NewErrMalformedPacketf("expected SQP version %v, got %v", q.version, version)
 	}
@@ -196,28 +197,35 @@ func (q *queryer) readQueryPerformanceInfo(qr *QueryResponse, r *packetReader) e
 	if err != nil {
 		return err
 	}
+
 	if length < 6 {
 		return ErrMalformedPacket("performance chunk is shorter than its header")
 	}
+
 	r = newPacketReader(io.LimitReader(r, int64(length)))
 	info := &PerformanceInfoChunk{ChunkLength: length}
 	if info.NumFlags, err = r.ReadByte(); err != nil {
 		return err
 	}
+
 	if info.NumFlags > 32 {
 		return ErrMalformedPacket("performance flag count exceeds 32")
 	}
+
 	if info.Flags, err = r.ReadUint32(); err != nil {
 		return err
 	}
+
 	count, err := r.ReadByte()
 	if err != nil {
 		return err
 	}
+
 	required := uint32(6) + uint32(count)*4
 	if required > length {
 		return ErrMalformedPacket("performance gauges exceed chunk length")
 	}
+
 	info.Gauges = make([]float32, int(count))
 	for i := range info.Gauges {
 		if info.Gauges[i], err = r.ReadFloat32(); err != nil {
@@ -227,6 +235,7 @@ func (q *queryer) readQueryPerformanceInfo(qr *QueryResponse, r *packetReader) e
 	if _, err := io.CopyN(ioutil.Discard, r, int64(length-required)); err != nil {
 		return err
 	}
+
 	qr.PerformanceInfo = info
 	return nil
 }
