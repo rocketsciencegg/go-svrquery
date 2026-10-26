@@ -185,7 +185,7 @@ func (q *queryer) readQuerySinglePacket(r *packetReader, version uint16, request
 	if l > 0 {
 		// If we have extra bytes remaining, we assume they are new fields from a future
 		// query version and discard them.
-		if _, err := io.CopyN(ioutil.Discard, r, int64(l)); err != nil {
+		if _, err := io.CopyN(ioutil.Discard, r, l); err != nil {
 			return nil, err
 		}
 	}
