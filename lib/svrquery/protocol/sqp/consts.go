@@ -5,7 +5,8 @@ const (
 	// DefaultMaxPacketSize is the default maximum size of a packet (MTU 1500 - UDP+IP header size)
 	DefaultMaxPacketSize = 1472
 
-	// VersionUnknown is the SQP version sent by clients that omit the version.
+	// VersionUnknown allows clients with bad implementations that don't set the
+	// version to be accepted instead of hard rejected.
 	VersionUnknown = uint16(0)
 
 	// Version1 is the SQP version with metrics data.
