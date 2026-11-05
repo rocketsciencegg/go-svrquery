@@ -115,6 +115,22 @@ func TestQueryer_Query(t *testing.T) {
 		}, qr)
 	})
 
+	t.Run("accepts-zero-response-as-v1", func(t *testing.T) {
+		q := setup(t, "sqp", Version1, VersionUnknown, ServerInfo)
+		result, err := q.Query()
+		require.NoError(t, err)
+		qr, ok := result.(*QueryResponse)
+		require.True(t, ok)
+		require.Equal(t, Version1, qr.Version)
+		require.NotNil(t, qr.ServerInfo)
+		require.Equal(t, "my server", qr.ServerInfo.ServerName)
+	})
+	t.Run("rejects-zero-response-to-v2-request", func(t *testing.T) {
+		q := setup(t, "sqp-v2", Version2, VersionUnknown, ServerInfo|PerformanceInfo)
+		result, err := q.Query()
+		require.ErrorContains(t, err, "expected SQP version 2, got 1")
+		require.Nil(t, result)
+	})
 	t.Run("rejects-v1-response-to-v2-request", func(t *testing.T) {
 		q := setup(t, "sqp-v2", 2, 1, ServerInfo|PerformanceInfo)
 		_, err := q.Query()
@@ -136,10 +152,30 @@ func TestQueryer_ReadQuery(t *testing.T) {
 	setup := func(t *testing.T, response []byte) *queryer {
 		t.Helper()
 		m := clienttest.NewMockClient(t)
+		m.On("Address").Return("127.0.0.1:8000").Maybe()
 		m.On("Read", mock.Anything).Return(response, nil).Once()
 		return newQueryer(ServerInfo, DefaultMaxPacketSize, m)
 	}
 
+	t.Run("zero-version-metrics", func(t *testing.T) {
+		response := clienttest.LoadData(t, testDir, "metrics_response")
+		binary.BigEndian.PutUint32(response[1:5], 0)
+		binary.BigEndian.PutUint16(response[5:7], VersionUnknown)
+		q := setup(t, response)
+		result, err := q.readQuery(Metrics)
+		require.NoError(t, err)
+		require.Equal(t, Version1, result.Version)
+		require.NotNil(t, result.Metrics)
+		require.Equal(t, byte(6), result.Metrics.MetricCount)
+		require.Equal(t, []float32{1, 0, 3.14159, 55.57, 438.2522, -123.456}, result.Metrics.Metrics)
+		require.Nil(t, result.PerformanceInfo)
+	})
+	t.Run("zero-version-with-empty-body", func(t *testing.T) {
+		q := setup(t, []byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0})
+		result, err := q.readQuery(0)
+		require.NoError(t, err)
+		require.Equal(t, &QueryResponse{Version: Version1, Address: "127.0.0.1:8000"}, result)
+	})
 	t.Run("unsupported-version-before-body", func(t *testing.T) {
 		q := setup(t, []byte{1, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0xaa})
 		result, err := q.readQuery(ServerInfo)
