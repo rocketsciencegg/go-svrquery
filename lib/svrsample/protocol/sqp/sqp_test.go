@@ -42,7 +42,7 @@ func TestQueryResponder_Respond(t *testing.T) {
 
 	t.Run("zero-version", func(t *testing.T) {
 		q := setup(t)
-		requireUnsupportedSQPVersion(t, q, 0)
+		requireQueryPayloadVersion(t, q, 0, 0, nil)
 	})
 	t.Run("future-version", func(t *testing.T) {
 		q := setup(t)
@@ -128,13 +128,18 @@ func requireUnsupportedSQPVersion(t *testing.T, q *QueryResponder, version uint1
 
 func requireQueryPayload(t *testing.T, q *QueryResponder, chunks byte, payload []byte) {
 	t.Helper()
+	requireQueryPayloadVersion(t, q, querysqp.Version1, chunks, payload)
+}
+
+func requireQueryPayloadVersion(t *testing.T, q *QueryResponder, version uint16, chunks byte, payload []byte) {
+	t.Helper()
 	const address = "client-addr:65534"
 	challenge, err := q.Respond(address, []byte{0, 0, 0, 0, 0})
 	require.NoError(t, err)
 	require.Len(t, challenge, 5)
 	require.Equal(t, byte(0), challenge[0])
 	request := append([]byte{1}, challenge[1:5]...)
-	request = append(request, 0, 1, chunks)
+	request = append(request, byte(version>>8), byte(version), chunks)
 	response, err := q.Respond(address, request)
 	require.NoError(t, err)
 	expected := bytes.NewBuffer(append([]byte{1}, challenge[1:5]...))
