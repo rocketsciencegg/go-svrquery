@@ -42,7 +42,8 @@ func TestQueryResponder_Respond(t *testing.T) {
 
 	t.Run("zero-version", func(t *testing.T) {
 		q := setup(t)
-		requireQueryPayloadVersion(t, q, querysqp.VersionUnknown, 0, nil)
+		response := requireQueryPayloadVersion(t, q, querysqp.VersionUnknown, 0, nil)
+		require.Equal(t, querysqp.Version1, binary.BigEndian.Uint16(response[5:7]))
 	})
 	t.Run("future-version", func(t *testing.T) {
 		q := setup(t)
@@ -131,7 +132,7 @@ func requireQueryPayload(t *testing.T, q *QueryResponder, chunks byte, payload [
 	requireQueryPayloadVersion(t, q, querysqp.Version1, chunks, payload)
 }
 
-func requireQueryPayloadVersion(t *testing.T, q *QueryResponder, version uint16, chunks byte, payload []byte) {
+func requireQueryPayloadVersion(t *testing.T, q *QueryResponder, version uint16, chunks byte, payload []byte) []byte {
 	t.Helper()
 	const address = "client-addr:65534"
 	challenge, err := q.Respond(address, []byte{0, 0, 0, 0, 0})
@@ -149,6 +150,7 @@ func requireQueryPayloadVersion(t *testing.T, q *QueryResponder, version uint16,
 	_, err = expected.Write(payload)
 	require.NoError(t, err)
 	require.Equal(t, expected.Bytes(), response)
+	return response
 }
 
 func TestNewQueryResponder(t *testing.T) {
