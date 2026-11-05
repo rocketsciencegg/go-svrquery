@@ -115,7 +115,13 @@ func (q *QueryResponder) handleQuery(clientAddress string, buf []byte) ([]byte, 
 	}
 
 	version := binary.BigEndian.Uint16(buf[5:7])
-	if version != querysqp.Version1 && version != querysqp.Version2 {
+	switch version {
+	case querysqp.VersionUnknown:
+		// Accept clients with bad implementations that don't set the version
+		// instead of hard rejecting them.
+		version = querysqp.Version1
+	case querysqp.Version1, querysqp.Version2:
+	default:
 		return nil, fmt.Errorf("unsupported sqp version: %d", version)
 	}
 

@@ -40,9 +40,24 @@ func TestQueryResponder_Respond(t *testing.T) {
 		0xc2, 0xf6, 0xe9, 0x79,
 	}
 
-	t.Run("zero-version", func(t *testing.T) {
+	t.Run("zero-version-uses-v1-header-and-metrics", func(t *testing.T) {
 		q := setup(t)
-		requireUnsupportedSQPVersion(t, q, 0)
+		const address = "client"
+		challenge, err := q.Respond(address, []byte{0, 0, 0, 0, 0})
+		require.NoError(t, err)
+		require.Len(t, challenge, 5)
+
+		request := append([]byte{querysqp.QueryRequestType}, challenge[1:5]...)
+		request = append(request, 0, 0, querysqp.Metrics)
+		require.Zero(t, binary.BigEndian.Uint16(request[5:7]))
+
+		response, err := q.Respond(address, request)
+		require.NoError(t, err)
+		require.Len(t, response, 11+len(metrics))
+		require.Equal(t, querysqp.Version1, binary.BigEndian.Uint16(response[5:7]),
+			"a version-zero request must receive a version-one response")
+		require.Equal(t, uint16(len(metrics)), binary.BigEndian.Uint16(response[9:11]))
+		require.Equal(t, metrics, response[11:])
 	})
 	t.Run("future-version", func(t *testing.T) {
 		q := setup(t)
