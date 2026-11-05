@@ -42,7 +42,7 @@ func TestQueryResponder_Respond(t *testing.T) {
 
 	t.Run("zero-version", func(t *testing.T) {
 		q := setup(t)
-		requireQueryPayloadVersion(t, q, 0, 0, nil)
+		requireQueryPayloadVersion(t, q, querysqp.VersionUnknown, 0, nil)
 	})
 	t.Run("future-version", func(t *testing.T) {
 		q := setup(t)
