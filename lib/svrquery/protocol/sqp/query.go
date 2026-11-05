@@ -93,6 +93,9 @@ func (q *queryer) readQueryHeader() (uint16, byte, byte, uint16, error) {
 	}
 
 	switch version {
+	case VersionUnknown:
+		// Accept servers that leave the version unset instead of hard rejecting them.
+		version = Version1
 	case Version1, Version2:
 	default:
 		return 0, 0, 0, 0, NewErrMalformedPacketf("unsupported SQP version: %d", version)
