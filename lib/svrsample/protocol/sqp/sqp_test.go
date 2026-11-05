@@ -40,10 +40,24 @@ func TestQueryResponder_Respond(t *testing.T) {
 		0xc2, 0xf6, 0xe9, 0x79,
 	}
 
-	t.Run("zero-version", func(t *testing.T) {
+	t.Run("zero-version-uses-v1-header-and-metrics", func(t *testing.T) {
 		q := setup(t)
-		response := requireQueryPayloadVersion(t, q, querysqp.VersionUnknown, 0, nil)
-		require.Equal(t, querysqp.Version1, binary.BigEndian.Uint16(response[5:7]))
+		const address = "client"
+		challenge, err := q.Respond(address, []byte{0, 0, 0, 0, 0})
+		require.NoError(t, err)
+		require.Len(t, challenge, 5)
+
+		request := append([]byte{querysqp.QueryRequestType}, challenge[1:5]...)
+		request = append(request, 0, 0, querysqp.Metrics)
+		require.Zero(t, binary.BigEndian.Uint16(request[5:7]))
+
+		response, err := q.Respond(address, request)
+		require.NoError(t, err)
+		require.Len(t, response, 11+len(metrics))
+		require.Equal(t, querysqp.Version1, binary.BigEndian.Uint16(response[5:7]),
+			"a version-zero request must receive a version-one response")
+		require.Equal(t, uint16(len(metrics)), binary.BigEndian.Uint16(response[9:11]))
+		require.Equal(t, metrics, response[11:])
 	})
 	t.Run("future-version", func(t *testing.T) {
 		q := setup(t)
@@ -129,18 +143,13 @@ func requireUnsupportedSQPVersion(t *testing.T, q *QueryResponder, version uint1
 
 func requireQueryPayload(t *testing.T, q *QueryResponder, chunks byte, payload []byte) {
 	t.Helper()
-	requireQueryPayloadVersion(t, q, querysqp.Version1, chunks, payload)
-}
-
-func requireQueryPayloadVersion(t *testing.T, q *QueryResponder, version uint16, chunks byte, payload []byte) []byte {
-	t.Helper()
 	const address = "client-addr:65534"
 	challenge, err := q.Respond(address, []byte{0, 0, 0, 0, 0})
 	require.NoError(t, err)
 	require.Len(t, challenge, 5)
 	require.Equal(t, byte(0), challenge[0])
 	request := append([]byte{1}, challenge[1:5]...)
-	request = append(request, byte(version>>8), byte(version), chunks)
+	request = append(request, 0, 1, chunks)
 	response, err := q.Respond(address, request)
 	require.NoError(t, err)
 	expected := bytes.NewBuffer(append([]byte{1}, challenge[1:5]...))
@@ -150,7 +159,6 @@ func requireQueryPayloadVersion(t *testing.T, q *QueryResponder, version uint16,
 	_, err = expected.Write(payload)
 	require.NoError(t, err)
 	require.Equal(t, expected.Bytes(), response)
-	return response
 }
 
 func TestNewQueryResponder(t *testing.T) {
